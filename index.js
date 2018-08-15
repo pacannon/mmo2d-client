@@ -1,5 +1,6 @@
 var camera, scene, renderer;
 var geometry, material, mesh;
+var geometry2, material2, mesh2;
 
 init();
 animate();
@@ -16,6 +17,12 @@ function init() {
 
 	mesh = new THREE.Mesh( geometry, material );
 	scene.add( mesh );
+
+	geometry2 = new THREE.PlaneGeometry( 1, 1 );
+	material2 = new THREE.MeshNormalMaterial();
+	
+	mesh2 = new THREE.Mesh( geometry2, material2 );
+	scene.add( mesh2 );
 
 	renderer = new THREE.WebGLRenderer( { antialias: true } );
 	renderer.setSize( window.innerWidth, window.innerHeight );
