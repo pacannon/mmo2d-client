@@ -8,6 +8,8 @@ animate();
 function init() {
 
 	camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.01, 10 );
+	camera.rotation.x = Math.PI/2;
+	camera.position.y = -2.3;
 	camera.position.z = 1;
 
 	scene = new THREE.Scene();
@@ -27,7 +29,7 @@ function init() {
 	renderer = new THREE.WebGLRenderer( { antialias: true } );
 	renderer.setSize( window.innerWidth, window.innerHeight );
 	document.body.appendChild( renderer.domElement );
-
+	
 }
 
 function animate() {
