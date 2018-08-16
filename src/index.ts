@@ -1,5 +1,7 @@
-var camera, scene, renderer;
-var geometry, material, mesh;
+/// <reference path="../node_modules/@types/three/index.d.ts" />
+
+var camera: THREE.Camera, scene: THREE.Scene, renderer: THREE.Renderer;
+var geometry, material, mesh: THREE.Mesh;
 var geometry2, material2, mesh2;
 
 init();

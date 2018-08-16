@@ -4,11 +4,16 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
     "three": "^0.95.0"
+  },
+  "devDependencies": {
+    "@types/node": "^10.7.1",
+    "@types/three": "^0.92.17",
+    "typescript": "2.9.2"
   }
 }
