@@ -5,6 +5,7 @@ import { Vector3 } from 'three';
 
 var camera: THREE.Camera, scene: THREE.Scene, renderer: THREE.Renderer;
 var world: World;
+let last: number | undefined = undefined;
 
 init();
 animate();
@@ -29,28 +30,30 @@ function init() {
 	
 }
 
-let last = Date.now();
-
 function animate() {
 
 	const now = Date.now();
 
-	const delta = now - last / 1000.0;
+	if (last === undefined) {
+		last = now;
+	}
+
+	const delta = (now - last) / 1000.0;
 
 	const acceleratePlayer = (player: Player) => {
 		const netAcceleration = new Vector3(0, 0, -9.8);
 
-		const secsPerTick = 1.0 / 60.0;
-
-		const newVelocity = player.velocity.addScaledVector(netAcceleration, secsPerTick);
+		const newVelocity = player.velocity.addScaledVector(netAcceleration, delta);
 
 		player.velocity = newVelocity;
-		player.mesh.position.addScaledVector(newVelocity, secsPerTick);
+		player.mesh.position.addScaledVector(newVelocity, delta);
 	};
 
 	acceleratePlayer(world.player);
 
 	requestAnimationFrame( animate );
+
+	last = now;
 
 	renderer.render( scene, camera );
 
