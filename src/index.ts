@@ -1,4 +1,4 @@
-/// <reference path="../node_modules/@types/three/index.d.ts" />
+import * as THREE from 'three';
 
 var camera: THREE.Camera, scene: THREE.Scene, renderer: THREE.Renderer;
 var geometry, material, mesh: THREE.Mesh;

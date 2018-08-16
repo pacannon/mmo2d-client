@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "tsc"
+    "build": "gulp"
   },
   "author": "",
   "license": "ISC",
@@ -14,6 +14,11 @@
   "devDependencies": {
     "@types/node": "^10.7.1",
     "@types/three": "^0.92.17",
-    "typescript": "2.9.2"
+    "browserify": "^16.2.2",
+    "gulp": "^3.9.1",
+    "gulp-typescript": "^5.0.0-alpha.3",
+    "tsify": "^4.0.0",
+    "typescript": "^2.9.2",
+    "vinyl-source-stream": "^2.0.0"
   }
 }
