@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 
+import { Player, World } from './domain/world';
+import { Vector3 } from 'three';
+
 var camera: THREE.Camera, scene: THREE.Scene, renderer: THREE.Renderer;
-var geometry, material, mesh: THREE.Mesh;
-var geometry2, material2, mesh2;
+var world: World;
 
 init();
 animate();
@@ -16,17 +18,10 @@ function init() {
 
 	scene = new THREE.Scene();
 
-	geometry = new THREE.BoxGeometry( 0.2, 0.2, 0.2 );
-	material = new THREE.MeshNormalMaterial();
+	world = World ();
 
-	mesh = new THREE.Mesh( geometry, material );
-	scene.add( mesh );
-
-	geometry2 = new THREE.PlaneGeometry( 1, 1 );
-	material2 = new THREE.MeshNormalMaterial();
-	
-	mesh2 = new THREE.Mesh( geometry2, material2 );
-	scene.add( mesh2 );
+	scene.add( world.ground );
+	scene.add( world.player.mesh );
 
 	renderer = new THREE.WebGLRenderer( { antialias: true } );
 	renderer.setSize( window.innerWidth, window.innerHeight );
@@ -34,12 +29,28 @@ function init() {
 	
 }
 
+let last = Date.now();
+
 function animate() {
 
-	requestAnimationFrame( animate );
+	const now = Date.now();
 
-	mesh.rotation.x += 0.01;
-	mesh.rotation.y += 0.02;
+	const delta = now - last / 1000.0;
+
+	const acceleratePlayer = (player: Player) => {
+		const netAcceleration = new Vector3(0, 0, -9.8);
+
+		const secsPerTick = 1.0 / 60.0;
+
+		const newVelocity = player.velocity.addScaledVector(netAcceleration, secsPerTick);
+
+		player.velocity = newVelocity;
+		player.mesh.position.addScaledVector(newVelocity, secsPerTick);
+	};
+
+	acceleratePlayer(world.player);
+
+	requestAnimationFrame( animate );
 
 	renderer.render( scene, camera );
 
