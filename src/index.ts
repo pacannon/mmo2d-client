@@ -12,9 +12,9 @@ animate();
 
 function init() {
 
-	camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.01, 10 );
+	camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.01, 130 );
 	camera.rotation.x = Math.PI/2;
-	camera.position.y = -2.3;
+	camera.position.y = -5.3;
 	camera.position.z = 1;
 
 	scene = new THREE.Scene();
@@ -32,7 +32,7 @@ function init() {
 
 function animate() {
 
-	const now = Date.now();
+	const now = performance.now();
 
 	if (last === undefined) {
 		last = now;
@@ -45,8 +45,13 @@ function animate() {
 
 		const newVelocity = player.velocity.addScaledVector(netAcceleration, delta);
 
-		player.velocity = newVelocity;
-		player.mesh.position.addScaledVector(newVelocity, delta);
+		if (player.mesh.position.z > 0) {
+			player.velocity = newVelocity;
+			player.mesh.position.addScaledVector(newVelocity, delta);
+		} else {
+			player.velocity = new Vector3();
+			player.mesh.position.z = 0;
+		}
 	};
 
 	acceleratePlayer(world.player);
