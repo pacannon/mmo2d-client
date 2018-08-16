@@ -1,11 +1,14 @@
 import * as THREE from 'three';
 
 import { Player, World } from './domain/world';
-import { Vector3 } from 'three';
+
+import { GameEvent } from './domain/gameEvent';
 
 var camera: THREE.Camera, scene: THREE.Scene, renderer: THREE.Renderer;
 var world: World;
 let last: number | undefined = undefined;
+
+var gameEventQueue: Array<GameEvent> = [];
 
 init();
 animate();
@@ -27,6 +30,29 @@ function init() {
 	renderer = new THREE.WebGLRenderer( { antialias: true } );
 	renderer.setSize( window.innerWidth, window.innerHeight );
 	document.body.appendChild( renderer.domElement );
+
+	
+document.addEventListener("keydown", onDocumentKeyDown, false);
+function onDocumentKeyDown(event: KeyboardEvent) {
+		var keyCode = event.which;
+
+    		// up
+    if (keyCode == 87) {
+			gameEventQueue.push({kind: 'moveForward'});
+        // down
+    } else if (keyCode == 83) {
+			gameEventQueue.push({kind: 'moveBackward'});
+        // left
+    } else if (keyCode == 65) {
+			gameEventQueue.push({kind: 'moveLeft'});
+        // right
+    } else if (keyCode == 68) {
+			gameEventQueue.push({kind: 'moveRight'});
+        // space
+    } else if (keyCode == 32) {
+			gameEventQueue.push({kind: 'jump'});
+    }
+};
 	
 }
 
@@ -41,20 +67,35 @@ function animate() {
 	const delta = (now - last) / 1000.0;
 
 	const acceleratePlayer = (player: Player) => {
-		const netAcceleration = new Vector3(0, 0, -9.8);
+		const netAcceleration = new THREE.Vector3(0, 0, -9.8);
 
 		const newVelocity = player.velocity.addScaledVector(netAcceleration, delta);
 
-		if (player.mesh.position.z > 0) {
+		if (player.mesh.position.z > 0 || player.velocity.z > 0) {
 			player.velocity = newVelocity;
 			player.mesh.position.addScaledVector(newVelocity, delta);
 		} else {
-			player.velocity = new Vector3();
+			player.velocity = new THREE.Vector3();
 			player.mesh.position.z = 0;
 		}
 	};
 
-	acceleratePlayer(world.player);
+	acceleratePlayer(world.player);	
+
+	while (gameEventQueue.length > 0) {
+		const event = gameEventQueue[0];
+		gameEventQueue = gameEventQueue.splice(1);
+
+		switch (event.kind) {
+			case 'jump':
+				if (world.player.mesh.position.z === 0) {
+					world.player.velocity.z = 10.0;
+				}
+				break;
+		}
+	}
+
+	console.log(JSON.stringify(world.player.mesh.position));
 
 	requestAnimationFrame( animate );
 

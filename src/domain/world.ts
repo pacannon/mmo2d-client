@@ -21,7 +21,7 @@ export const World = (
 };
 
 const Player = (): Player => {
-  const geometry = new THREE.BoxGeometry( 0.2, 0.2, 0.2 );
+  const geometry = new THREE.BoxGeometry( 1, 1, 1 );
   const material = new THREE.MeshNormalMaterial();
 
   const mesh = new THREE.Mesh( geometry, material );
@@ -36,7 +36,7 @@ const Player = (): Player => {
 
 const Ground = (): THREE.Mesh => {
 
-	const geometry = new THREE.PlaneGeometry( 1, 1 );
+	const geometry = new THREE.PlaneGeometry( 100, 100 );
 	const material = new THREE.MeshNormalMaterial();
 	
   return new THREE.Mesh( geometry, material );
