@@ -89,7 +89,7 @@ function animate() {
 		switch (event.kind) {
 			case 'jump':
 				if (world.player.mesh.position.z === 0) {
-					world.player.velocity.z = 10.0;
+					world.player.velocity.z = 3.0;
 				}
 				break;
 		}
