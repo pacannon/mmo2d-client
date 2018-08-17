@@ -92,6 +92,18 @@ function animate() {
 					world.player.velocity.z = 3.0;
 				}
 				break;
+			case 'moveForward':
+					world.player.mesh.position.y += 0.01;
+				break;
+			case 'moveBackward':
+					world.player.mesh.position.y -= 0.01;
+				break;
+			case 'moveLeft':
+					world.player.mesh.position.x -= 0.01;
+				break;
+			case 'moveRight':
+					world.player.mesh.position.x += 0.01;
+				break;
 		}
 	}
 
