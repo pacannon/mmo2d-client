@@ -102,9 +102,6 @@ function init() {
 
 	function onWindowResize() {
 		camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.01, 130 );
-		camera.rotation.x = Math.PI/2;
-		camera.position.y = -5.3;
-		camera.position.z = 1;
 		renderer.setSize( window.innerWidth, window.innerHeight );
 	}
 }
@@ -192,6 +189,19 @@ function animate() {
 	};
 
 	acceleratePlayer(world.player);
+
+	camera.rotation.x = 0;
+	camera.rotation.y = 0;
+	camera.rotation.z = 0;
+
+	camera.position.x = playerMesh.position.x;
+	camera.position.y = playerMesh.position.y;
+	camera.position.z = playerMesh.position.z;
+
+	camera.rotateZ(playerMesh.rotation.z);
+	camera.rotateX(Math.PI/2);
+	camera.translateZ(8);
+	camera.translateY(2);
 
 	requestAnimationFrame( animate );
 
