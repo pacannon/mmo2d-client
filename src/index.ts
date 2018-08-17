@@ -43,11 +43,17 @@ function onDocumentKeyDown(event: KeyboardEvent) {
     } else if (keyCode == 83) {
 			gameEventQueue.push({kind: 'moveBackward'});
         // left
-    } else if (keyCode == 65) {
+    } else if (keyCode == 81) {
 			gameEventQueue.push({kind: 'moveLeft'});
         // right
-    } else if (keyCode == 68) {
+    } else if (keyCode == 69) {
 			gameEventQueue.push({kind: 'moveRight'});
+        // space
+    } else if (keyCode == 65) {
+			gameEventQueue.push({kind: 'rotateLeft'});
+        // right
+    } else if (keyCode == 68) {
+			gameEventQueue.push({kind: 'rotateRight'});
         // space
     } else if (keyCode == 32) {
 			gameEventQueue.push({kind: 'jump'});
@@ -103,6 +109,12 @@ function animate() {
 				break;
 			case 'moveRight':
 					world.player.mesh.position.x += 0.01;
+				break;
+			case 'rotateLeft':
+					world.player.mesh.rotation.z += 0.01;
+				break;
+			case 'rotateRight':
+					world.player.mesh.rotation.z -= 0.01;
 				break;
 		}
 	}

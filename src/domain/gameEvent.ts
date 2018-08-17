@@ -4,6 +4,8 @@ export type GameEvent =
   | MoveBackward
   | MoveLeft
   | MoveRight
+  | RotateLeft
+  | RotateRight
 
 interface Jump {
   kind: 'jump';
@@ -23,4 +25,12 @@ interface MoveLeft {
 
 interface MoveRight {
   kind: 'moveRight';
+}
+
+interface RotateLeft {
+  kind: 'rotateLeft';
+}
+
+interface RotateRight {
+  kind: 'rotateRight';
 }
