@@ -90,6 +90,7 @@ const processEventQueue = () => {
 		switch (event.kind) {
 			case 'jump':
 				if (world.player.bottom.get() === 0) {
+					console.log('lol');
 					world.player.velocity.z = 3.0;
 				}
 				break;
@@ -137,7 +138,7 @@ const animate = () => {
 	const now = performance.now();
 
 	processEventQueue();
-	runPhysicalSimulationStep(world, (now - (last === undefined ? now : last) / 1000));
+	runPhysicalSimulationStep(world, ((now - (last === undefined ? now : last)) / 1000));
 	positionCamera(world.player.mesh)
 
 	requestAnimationFrame( animate );
