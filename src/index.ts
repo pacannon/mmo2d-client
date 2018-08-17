@@ -97,6 +97,16 @@ function init() {
 				gameEventQueue.push({kind: 'jump'});
 			}
 	};
+	
+	window.addEventListener( 'resize', onWindowResize, false );
+
+	function onWindowResize() {
+		camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.01, 130 );
+		camera.rotation.x = Math.PI/2;
+		camera.position.y = -5.3;
+		camera.position.z = 1;
+		renderer.setSize( window.innerWidth, window.innerHeight );
+	}
 }
 
 function animate() {
