@@ -47,6 +47,14 @@ export const runPhysicalSimulationStep = (world: World, delta: number) => {
   
   const playerMesh = world.player.mesh;
 
+	if (world.player.controller.yawLeft) {
+		playerMesh.rotateZ(speed * 0.3);
+	}
+
+	if (world.player.controller.yawRight) {
+		playerMesh.rotateZ(-speed * 0.3);
+	}
+
 	if (world.player.controller.moveForward) {
 		playerMesh.translateY(speed);
 	}
@@ -61,14 +69,6 @@ export const runPhysicalSimulationStep = (world: World, delta: number) => {
 
 	if (world.player.controller.strafeRight) {
 		playerMesh.translateX(speed);
-	}
-
-	if (world.player.controller.yawLeft) {
-		playerMesh.rotateZ(speed);
-	}
-
-	if (world.player.controller.yawRight) {
-		playerMesh.rotateZ(-speed);
 	}
 
 	const acceleratePlayer = (player: Player) => {
