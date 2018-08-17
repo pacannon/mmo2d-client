@@ -26,6 +26,7 @@ function init() {
 
 	scene.add( world.ground );
 	scene.add( world.player.mesh );
+	scene.add( ...world.objects );
 
 	renderer = new THREE.WebGLRenderer( { antialias: true } );
 	renderer.setSize( window.innerWidth, window.innerHeight );
