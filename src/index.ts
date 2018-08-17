@@ -7,7 +7,6 @@ import { GameEvent } from './domain/gameEvent';
 var camera: THREE.Camera, scene: THREE.Scene, renderer: THREE.Renderer;
 var world: World;
 let last: number | undefined = undefined;
-let playerAxes: THREE.AxesHelper;
 
 var gameEventQueue: Array<GameEvent> = [];
 
@@ -27,9 +26,6 @@ function init() {
 
 	scene.add( world.ground );
 	scene.add( world.player.mesh );
-
-	playerAxes = new THREE.AxesHelper();
-	scene.add(playerAxes);
 
 	renderer = new THREE.WebGLRenderer( { antialias: true } );
 	renderer.setSize( window.innerWidth, window.innerHeight );
@@ -184,10 +180,7 @@ function animate() {
 		}
 	};
 
-	acceleratePlayer(world.player);	
-
-	playerAxes.rotation.copy(world.player.mesh.rotation);
-	playerAxes.position.copy(world.player.mesh.position);
+	acceleratePlayer(world.player);
 
 	requestAnimationFrame( animate );
 

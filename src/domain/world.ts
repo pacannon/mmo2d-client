@@ -45,6 +45,10 @@ const Player = (): Player => {
 
   mesh.position.z = 2;
 
+  const playerAxes = new THREE.AxesHelper(1.2);
+  
+  mesh.add(playerAxes);
+
   return {
     bottom: {
       get: () => mesh.position.z - (zHeight / 2),
