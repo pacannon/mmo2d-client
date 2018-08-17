@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 
-import { Player, World } from './domain/world';
-
 import { GameEvent } from './domain/gameEvent';
+import { Player } from './domain/player';
+import { World } from './domain/world';
 
 var camera: THREE.Camera, scene: THREE.Scene, renderer: THREE.Renderer;
 var world: World;
