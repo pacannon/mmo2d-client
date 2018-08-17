@@ -40,5 +40,50 @@ const Objects = (): THREE.Mesh[] => {
   mesh.position.z = 1;
 	
   return [mesh];
-
 };
+
+export const runPhysicalSimulationStep = (world: World, delta: number) => {
+  const speed = 0.1;
+  
+  const playerMesh = world.player.mesh;
+
+	if (world.player.controller.moveForward) {
+		playerMesh.translateY(speed);
+	}
+
+	if (world.player.controller.moveBackward) {
+		playerMesh.translateY(-speed);
+	}
+
+	if (world.player.controller.strafeLeft) {
+		playerMesh.translateX(-speed);
+	}
+
+	if (world.player.controller.strafeRight) {
+		playerMesh.translateX(speed);
+	}
+
+	if (world.player.controller.yawLeft) {
+		playerMesh.rotateZ(speed);
+	}
+
+	if (world.player.controller.yawRight) {
+		playerMesh.rotateZ(-speed);
+	}
+
+	const acceleratePlayer = (player: Player) => {
+		const netAcceleration = new THREE.Vector3(0, 0, -9.8);
+
+		const newVelocity = player.velocity.addScaledVector(netAcceleration, delta);
+
+		if (player.bottom.get() > 0 || player.velocity.z > 0) {
+			player.velocity = newVelocity;
+			player.mesh.position.addScaledVector(newVelocity, delta);
+		} else {
+			player.velocity = new THREE.Vector3();
+			player.bottom.set(0);
+		}
+	};
+
+	acceleratePlayer(world.player);
+}
