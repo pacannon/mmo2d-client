@@ -6,6 +6,10 @@ export type World = {
 };
 
 export type Player = {
+  bottom: {
+    get: () => number;
+    set: (z: number) => void;
+  },
   controller: Controller;
   mesh: THREE.Mesh;
   velocity: THREE.Vector3;
@@ -31,7 +35,10 @@ export const World = (
 };
 
 const Player = (): Player => {
-  const geometry = new THREE.BoxGeometry( 1, 1, 1 );
+  const xWidth = 1;
+  const yLength = 1;
+  const zHeight = 2;
+  const geometry = new THREE.BoxGeometry( xWidth, yLength, zHeight );
 	const material = new THREE.MeshNormalMaterial();
 
   const mesh = new THREE.Mesh( geometry, material );
@@ -39,6 +46,10 @@ const Player = (): Player => {
   mesh.position.z = 2;
 
   return {
+    bottom: {
+      get: () => mesh.position.z - (zHeight / 2),
+      set: (z: number) => mesh.position.z = z + (zHeight / 2),
+    },
     controller: {
       moveForward: false,
       moveBackward: false,

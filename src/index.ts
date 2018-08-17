@@ -119,7 +119,7 @@ function animate() {
 
 		switch (event.kind) {
 			case 'jump':
-				if (world.player.mesh.position.z === 0) {
+				if (world.player.bottom.get() === 0) {
 					world.player.velocity.z = 3.0;
 				}
 				break;
@@ -175,12 +175,12 @@ function animate() {
 
 		const newVelocity = player.velocity.addScaledVector(netAcceleration, delta);
 
-		if (player.mesh.position.z > 0 || player.velocity.z > 0) {
+		if (player.bottom.get() > 0 || player.velocity.z > 0) {
 			player.velocity = newVelocity;
 			player.mesh.position.addScaledVector(newVelocity, delta);
 		} else {
 			player.velocity = new THREE.Vector3();
-			player.mesh.position.z = 0;
+			player.bottom.set(0);
 		}
 	};
 
