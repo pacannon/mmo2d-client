@@ -6,8 +6,18 @@ export type World = {
 };
 
 export type Player = {
+  controller: Controller;
   mesh: THREE.Mesh;
   velocity: THREE.Vector3;
+}
+
+export type Controller = {
+  moveForward: boolean;
+  moveBackward: boolean;
+  strafeLeft: boolean;
+  strafeRight: boolean;
+  yawLeft: boolean;
+  yawRight: boolean;
 }
 
 export const World = (
@@ -29,6 +39,14 @@ const Player = (): Player => {
   mesh.position.z = 2;
 
   return {
+    controller: {
+      moveForward: false,
+      moveBackward: false,
+      strafeLeft: false,
+      strafeRight: false,
+      yawLeft: false,
+      yawRight: false,
+    },
     mesh: mesh,
     velocity: new THREE.Vector3(),
   };

@@ -2,10 +2,10 @@ export type GameEvent =
   | Jump
   | MoveForward
   | MoveBackward
-  | MoveLeft
-  | MoveRight
-  | RotateLeft
-  | RotateRight
+  | StrafeLeft
+  | StrafeRight
+  | YawLeft
+  | YawRight
 
 interface Jump {
   kind: 'jump';
@@ -13,24 +13,30 @@ interface Jump {
 
 interface MoveForward {
   kind: 'moveForward';
+  mapTo: boolean;
 }
 
 interface MoveBackward {
   kind: 'moveBackward';
+  mapTo: boolean;
 }
 
-interface MoveLeft {
-  kind: 'moveLeft';
+interface StrafeLeft {
+  kind: 'strafeLeft';
+  mapTo: boolean;
 }
 
-interface MoveRight {
-  kind: 'moveRight';
+interface StrafeRight {
+  kind: 'strafeRight';
+  mapTo: boolean;
 }
 
-interface RotateLeft {
-  kind: 'rotateLeft';
+interface YawLeft {
+  kind: 'yawLeft';
+  mapTo: boolean;
 }
 
-interface RotateRight {
-  kind: 'rotateRight';
+interface YawRight {
+  kind: 'yawRight';
+  mapTo: boolean;
 }
