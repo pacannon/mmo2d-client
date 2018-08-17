@@ -90,7 +90,6 @@ const processEventQueue = () => {
 		switch (event.kind) {
 			case 'jump':
 				if (world.player.bottom.get() === 0) {
-					console.log('lol');
 					world.player.velocity.z = 3.0;
 				}
 				break;
