@@ -36,34 +36,32 @@ function init() {
 	document.body.appendChild( renderer.domElement );
 
 	
-document.addEventListener("keydown", onDocumentKeyDown, false);
-function onDocumentKeyDown(event: KeyboardEvent) {
-		var keyCode = event.which;
-
-    		// up
-    if (keyCode == 87) {
-			gameEventQueue.push({kind: 'moveForward'});
-        // down
-    } else if (keyCode == 83) {
-			gameEventQueue.push({kind: 'moveBackward'});
-        // left
-    } else if (keyCode == 81) {
-			gameEventQueue.push({kind: 'moveLeft'});
-        // right
-    } else if (keyCode == 69) {
-			gameEventQueue.push({kind: 'moveRight'});
-        // space
-    } else if (keyCode == 65) {
-			gameEventQueue.push({kind: 'rotateLeft'});
-        // right
-    } else if (keyCode == 68) {
-			gameEventQueue.push({kind: 'rotateRight'});
-        // space
-    } else if (keyCode == 32) {
-			gameEventQueue.push({kind: 'jump'});
-    }
-};
-	
+	document.addEventListener("keydown", onDocumentKeyDown, false);
+	function onDocumentKeyDown(event: KeyboardEvent) {
+			var keyCode = event.which;
+					// up
+			if (keyCode == 87) {
+				gameEventQueue.push({kind: 'moveForward'});
+					// down
+			} else if (keyCode == 83) {
+				gameEventQueue.push({kind: 'moveBackward'});
+					// left
+			} else if (keyCode == 81) {
+				gameEventQueue.push({kind: 'moveLeft'});
+					// right
+			} else if (keyCode == 69) {
+				gameEventQueue.push({kind: 'moveRight'});
+					// space
+			} else if (keyCode == 65) {
+				gameEventQueue.push({kind: 'rotateLeft'});
+					// right
+			} else if (keyCode == 68) {
+				gameEventQueue.push({kind: 'rotateRight'});
+					// space
+			} else if (keyCode == 32) {
+				gameEventQueue.push({kind: 'jump'});
+			}
+	};
 }
 
 function animate() {
@@ -74,7 +72,7 @@ function animate() {
 		last = now;
 	}
 
-	const delta = (now - last) / 1000.0;
+	const delta = (now - last) / 1000;
 
 	const acceleratePlayer = (player: Player) => {
 		const netAcceleration = new THREE.Vector3(0, 0, -9.8);
@@ -97,6 +95,7 @@ function animate() {
 		gameEventQueue = gameEventQueue.splice(1);
 
 		const speed = 0.1;
+		const playerMesh = world.player.mesh;
 
 		switch (event.kind) {
 			case 'jump':
@@ -105,26 +104,22 @@ function animate() {
 				}
 				break;
 			case 'moveForward':
-					world.player.mesh.position.x -= speed * Math.sin(world.player.mesh.rotation.z);
-					world.player.mesh.position.y += speed * Math.cos(world.player.mesh.rotation.z);
+					playerMesh.translateY(speed);
 				break;
 			case 'moveBackward':
-					world.player.mesh.position.x += speed * Math.sin(world.player.mesh.rotation.z);
-					world.player.mesh.position.y -= speed * Math.cos(world.player.mesh.rotation.z);
+					playerMesh.translateY(-speed);
 				break;
 			case 'moveLeft':
-					world.player.mesh.position.x -= speed * Math.cos(world.player.mesh.rotation.z);
-					world.player.mesh.position.y -= speed * Math.sin(world.player.mesh.rotation.z);
+					playerMesh.translateX(-speed);
 				break;
 			case 'moveRight':
-					world.player.mesh.position.x += speed * Math.cos(world.player.mesh.rotation.z);
-					world.player.mesh.position.y += speed * Math.sin(world.player.mesh.rotation.z);
+					playerMesh.translateX(speed);
 				break;
 			case 'rotateLeft':
-					world.player.mesh.rotation.z += speed;
+					playerMesh.rotateZ(speed);
 				break;
 			case 'rotateRight':
-					world.player.mesh.rotation.z -= speed;
+					playerMesh.rotateZ(-speed);
 				break;
 		}
 	}
