@@ -7,6 +7,7 @@ import { GameEvent } from './domain/gameEvent';
 var camera: THREE.Camera, scene: THREE.Scene, renderer: THREE.Renderer;
 var world: World;
 let last: number | undefined = undefined;
+let playerAxes: THREE.AxesHelper;
 
 var gameEventQueue: Array<GameEvent> = [];
 
@@ -26,6 +27,9 @@ function init() {
 
 	scene.add( world.ground );
 	scene.add( world.player.mesh );
+
+	playerAxes = new THREE.AxesHelper();
+	scene.add(playerAxes);
 
 	renderer = new THREE.WebGLRenderer( { antialias: true } );
 	renderer.setSize( window.innerWidth, window.innerHeight );
@@ -92,6 +96,8 @@ function animate() {
 		const event = gameEventQueue[0];
 		gameEventQueue = gameEventQueue.splice(1);
 
+		const speed = 0.1;
+
 		switch (event.kind) {
 			case 'jump':
 				if (world.player.mesh.position.z === 0) {
@@ -99,27 +105,32 @@ function animate() {
 				}
 				break;
 			case 'moveForward':
-					world.player.mesh.position.y += 0.01;
+					world.player.mesh.position.x -= speed * Math.sin(world.player.mesh.rotation.z);
+					world.player.mesh.position.y += speed * Math.cos(world.player.mesh.rotation.z);
 				break;
 			case 'moveBackward':
-					world.player.mesh.position.y -= 0.01;
+					world.player.mesh.position.x += speed * Math.sin(world.player.mesh.rotation.z);
+					world.player.mesh.position.y -= speed * Math.cos(world.player.mesh.rotation.z);
 				break;
 			case 'moveLeft':
-					world.player.mesh.position.x -= 0.01;
+					world.player.mesh.position.x -= speed * Math.cos(world.player.mesh.rotation.z);
+					world.player.mesh.position.y -= speed * Math.sin(world.player.mesh.rotation.z);
 				break;
 			case 'moveRight':
-					world.player.mesh.position.x += 0.01;
+					world.player.mesh.position.x += speed * Math.cos(world.player.mesh.rotation.z);
+					world.player.mesh.position.y += speed * Math.sin(world.player.mesh.rotation.z);
 				break;
 			case 'rotateLeft':
-					world.player.mesh.rotation.z += 0.01;
+					world.player.mesh.rotation.z += speed;
 				break;
 			case 'rotateRight':
-					world.player.mesh.rotation.z -= 0.01;
+					world.player.mesh.rotation.z -= speed;
 				break;
 		}
 	}
 
-	console.log(JSON.stringify(world.player.mesh.position));
+	playerAxes.rotation.copy(world.player.mesh.rotation);
+	playerAxes.position.copy(world.player.mesh.position);
 
 	requestAnimationFrame( animate );
 
