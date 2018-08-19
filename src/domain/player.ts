@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 
+import { Controller } from '../../../mmo2d-server/src/domain/controller';
+
 export type Player = {
   bottom: {
     get: () => number;
@@ -10,16 +12,6 @@ export type Player = {
   velocity: THREE.Vector3;
 }
 
-export type Controller = {
-  moveForward: boolean;
-  moveBackward: boolean;
-  strafeLeft: boolean;
-  strafeRight: boolean;
-  yawLeft: boolean;
-  yawRight: boolean;
-}
-
-
 export const Player = (): Player => {
   const xWidth = 1;
   const yLength = 1;
@@ -29,13 +21,11 @@ export const Player = (): Player => {
 
   const mesh = new THREE.Mesh( geometry, material );
 
-  mesh.position.z = 20;
-
   const playerAxes = new THREE.AxesHelper(1.2);
   
   mesh.add(playerAxes);
 
-  return {
+  const player = {
     bottom: {
       get: () => mesh.position.z - (zHeight / 2),
       set: (z: number) => mesh.position.z = z + (zHeight / 2),
@@ -51,4 +41,8 @@ export const Player = (): Player => {
     mesh: mesh,
     velocity: new THREE.Vector3(),
   };
+
+  player.bottom.set(20);
+
+  return player;
 };
