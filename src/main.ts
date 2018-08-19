@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 
-import { GameEvent } from './domain/gameEvent';
+import { ControllerAction, Controller } from '../../mmo2d-server/src/domain/controller';
 import { ServerEmission } from '../../mmo2d-server/src/domain/serverEmission';
 import { GameState } from '../../mmo2d-server/src/domain/gameState';
-import { connect } from './socketService';
+import { connect, emit } from './socketService';
 import { WorldAction, runPhysicalSimulationStep } from '../../mmo2d-server/src/domain/world';
 import { Player, PlayerDisplacement } from '../../mmo2d-server/src/domain/player';
 import * as ClientWorld from './domain/world';
@@ -20,7 +20,7 @@ let last: number | undefined = undefined;
 const playerMeshes: {[playerId: string]: THREE.Mesh} = {};
 const world = ClientWorld.World ();
 
-let gameEventQueue: GameEvent[] = [];
+let controllerActionQueue: ControllerAction[] = [];
 
 const Objects = (): THREE.Mesh[] => {
 
@@ -43,6 +43,11 @@ const Ground = (): THREE.Mesh => {
   return new THREE.Mesh( geometry, material );
 
 };
+
+const pushControllerAction = (action: ControllerAction) => {
+	controllerActionQueue.push(action);
+	emit(action);
+}
 
 const init = () => {
 	connect(serverEmissions);
@@ -68,19 +73,19 @@ const init = () => {
 		const keyCode = event.which;
 
 		if (keyCode == 87) {
-			gameEventQueue.push({kind: 'moveForward', mapTo: mapTo});
+			pushControllerAction({kind: 'moveForward', mapTo: mapTo});
 		} else if (keyCode == 83) {
-			gameEventQueue.push({kind: 'moveBackward', mapTo: mapTo});
+			pushControllerAction({kind: 'moveBackward', mapTo: mapTo});
 		} else if (keyCode == 81) {
-			gameEventQueue.push({kind: 'strafeLeft', mapTo: mapTo});
+			pushControllerAction({kind: 'strafeLeft', mapTo: mapTo});
 		} else if (keyCode == 69) {
-			gameEventQueue.push({kind: 'strafeRight', mapTo: mapTo});
+			pushControllerAction({kind: 'strafeRight', mapTo: mapTo});
 		} else if (keyCode == 65) {
-			gameEventQueue.push({kind: 'yawLeft', mapTo: mapTo});
+			pushControllerAction({kind: 'yawLeft', mapTo: mapTo});
 		} else if (keyCode == 68) {
-			gameEventQueue.push({kind: 'yawRight', mapTo: mapTo});
+			pushControllerAction({kind: 'yawRight', mapTo: mapTo});
 		} else if (keyCode == 32) {
-			gameEventQueue.push({kind: 'jump'});
+			pushControllerAction({kind: 'jump'});
 		}
 	});
 
@@ -93,19 +98,17 @@ const init = () => {
 		const keyCode = event.which;
 
 		if (keyCode == 87) {
-			gameEventQueue.push({kind: 'moveForward', mapTo: mapTo});
+			pushControllerAction({kind: 'moveForward', mapTo: mapTo});
 		} else if (keyCode == 83) {
-			gameEventQueue.push({kind: 'moveBackward', mapTo: mapTo});
+			pushControllerAction({kind: 'moveBackward', mapTo: mapTo});
 		} else if (keyCode == 81) {
-			gameEventQueue.push({kind: 'strafeLeft', mapTo: mapTo});
+			pushControllerAction({kind: 'strafeLeft', mapTo: mapTo});
 		} else if (keyCode == 69) {
-			gameEventQueue.push({kind: 'strafeRight', mapTo: mapTo});
+			pushControllerAction({kind: 'strafeRight', mapTo: mapTo});
 		} else if (keyCode == 65) {
-			gameEventQueue.push({kind: 'yawLeft', mapTo: mapTo});
+			pushControllerAction({kind: 'yawLeft', mapTo: mapTo});
 		} else if (keyCode == 68) {
-			gameEventQueue.push({kind: 'yawRight', mapTo: mapTo});
-		} else if (keyCode == 32) {
-			gameEventQueue.push({kind: 'jump'});
+			pushControllerAction({kind: 'yawRight', mapTo: mapTo});
 		}
 	});
 	
@@ -149,9 +152,9 @@ const displacePlayer = (action: PlayerDisplacement) => {
 }
 
 const processEventQueue = () => {
-	while (gameEventQueue.length > 0) {
-		const event = gameEventQueue[0];
-		gameEventQueue = gameEventQueue.splice(1);
+	while (controllerActionQueue.length > 0) {
+		const event = controllerActionQueue[0];
+		controllerActionQueue = controllerActionQueue.splice(1);
 
 		switch (event.kind) {
 			case 'jump':
@@ -201,13 +204,13 @@ const processEventQueue = () => {
 						console.log('WARNING: received extraneous full update!');
 					}
 					break;
-				case 'gameStateDelta':
+				case 'gameStateDeltaEmission':
 					if (serverGameState !== undefined) {
 						if (serverGameState.worldActions[emission.tick] === undefined) {
 							serverGameState.worldActions[emission.tick] = [];
 						}
 
-						const action = emission.worldAction;
+						const action = emission.gsd;
 						serverGameState.worldActions[emission.tick].push(action);
 						
 						switch (action.kind) {
@@ -217,8 +220,10 @@ const processEventQueue = () => {
 							case 'world.players.filterOut':
 								removePlayerMesh(action.id);
 								break;
-							case 'playerDisplacement':
+							case 'player.displacement':
 								displacePlayer(action);
+								break;
+							case 'player.controllerAction':
 								break;
 							default:
 								const _exhaustiveCheck: never = action;
@@ -230,7 +235,7 @@ const processEventQueue = () => {
 							worldActionQueue[emission.tick] = [];
 						}
 
-						worldActionQueue[emission.tick].push(emission.worldAction);
+						worldActionQueue[emission.tick].push(emission.gsd);
 					}
 					break;
 				default:
@@ -238,10 +243,10 @@ const processEventQueue = () => {
 					return _exhaustiveCheck;
 			}
 
-			console.log(JSON.stringify(emission, undefined, 2));
+			// console.log(JSON.stringify(emission, undefined, 2));
 		}
 
-		console.log('serverGameState:', JSON.stringify(serverGameState, undefined, 2));
+		// console.log('serverGameState:', JSON.stringify(serverGameState, undefined, 2));
 	}
 }
 
