@@ -42,7 +42,7 @@ export const Player = (): Player => {
     velocity: new THREE.Vector3(),
   };
 
-  player.bottom.set(20);
+  player.bottom.set(5);
 
   return player;
 };

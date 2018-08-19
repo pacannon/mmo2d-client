@@ -5,8 +5,9 @@ import { ServerEmission } from '../../mmo2d-server/src/domain/serverEmission';
 import { GameState } from '../../mmo2d-server/src/domain/gameState';
 import { connect } from './socketService';
 import { WorldAction, runPhysicalSimulationStep } from '../../mmo2d-server/src/domain/world';
-import { Player } from '../../mmo2d-server/src/domain/player';
+import { Player, PlayerDisplacement } from '../../mmo2d-server/src/domain/player';
 import * as ClientWorld from './domain/world';
+import { Vector3 } from 'three';
 
 let camera: THREE.Camera;
 let scene: THREE.Scene;
@@ -115,6 +116,10 @@ const init = () => {
 }
 
 const addPlayerMesh = (player: Player) => {
+	if (playerMeshes[player.id] !== undefined) {
+		return;
+	}
+
 	const playerGeometry = new THREE.BoxGeometry(1, 1, 1);
 	const playerMaterial = new THREE.MeshNormalMaterial( { wireframe: true } );
 	const playerMesh = new THREE.Mesh(playerGeometry, playerMaterial);
@@ -133,6 +138,14 @@ const removePlayerMesh = (playerId: string) => {
 
 	scene.remove(playerMesh);
 	delete playerMeshes[playerId];
+}
+
+const displacePlayer = (action: PlayerDisplacement) => {
+	const playerMesh = playerMeshes[action.playerId];
+
+	playerMesh.position.addScaledVector(new Vector3(action.dP.x, action.dP.y, action.dP.z), 1.0);
+	// playerMesh.rotation.addScaledVector(new Vector3(action.dP.x, action.dP.y, action.dP.z), 1.0);
+	// world.player.addScaledVector(new Vector3(action.dP.x, action.dP.y, action.dP.z), 1.0);
 }
 
 const processEventQueue = () => {
@@ -203,6 +216,9 @@ const processEventQueue = () => {
 								break;
 							case 'world.players.filterOut':
 								removePlayerMesh(action.id);
+								break;
+							case 'playerDisplacement':
+								displacePlayer(action);
 								break;
 							default:
 								const _exhaustiveCheck: never = action;
