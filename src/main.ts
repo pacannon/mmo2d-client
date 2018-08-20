@@ -259,13 +259,9 @@ const positionCamera = (target: THREE.Mesh) => {
 
 };
 
-
-setInterval(() => {
+setTimeout(function tick () {
+	const start = performance.now();
 	processServerEmissions();
-
-	if (serverGameState === undefined) {
-		return;
-	}
 
   let world: World = { ...clientGameState.world };
 
@@ -291,7 +287,6 @@ setInterval(() => {
   const gameStateDeltas = runPhysicalSimulationStep(world, GameState.TICKRATE / 1000);
 
   gameStateDeltas.forEach(d => {
-		console.log(JSON.stringify(d));
     world = reduce(d, world);
   });
 
@@ -300,8 +295,10 @@ setInterval(() => {
 	clientGameState.world = world;
   
   if (allDeltas.length > 0) {
-    clientGameState.worldActions[serverGameState.tick] = allDeltas;
+    clientGameState.worldActions[clientGameState.tick] = allDeltas;
 	}
+
+	setTimeout(tick, GameState.TICKRATE - (performance.now() - start));
 }, GameState.TICKRATE);
 
 const animate = () => {
