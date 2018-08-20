@@ -11,13 +11,13 @@ export const connect = (serverEmissions: ServerEmission[]) => {
     console.log('connect');
   });
   
-  socket.on('serverEmission', function(data: any) {
+  socket.on('serverEmission', function(data: ServerEmission) {
     serverEmissions.push(data);
   });
 
   // socket.emit('input', {hello: 'world'});
   
-  socket.on('disconnect', function(){
+  socket.on('disconnect', function() {
     socket.disconnect();
     console.log('disconnect');
   });

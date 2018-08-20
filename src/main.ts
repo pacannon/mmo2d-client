@@ -3,11 +3,11 @@ import * as THREE from 'three';
 import { ControllerAction, Controller } from '../../mmo2d-server/src/domain/controller';
 import { ServerEmission } from '../../mmo2d-server/src/domain/serverEmission';
 import * as GameState from '../../mmo2d-server/src/domain/gameState';
-import { World, WorldAction, runPhysicalSimulationStep, reduce } from '../../mmo2d-server/src/domain/world';
+import { World, WorldAction, reduce, runPhysicalSimulationStep } from '../../mmo2d-server/src/domain/world';
 import { Player, PlayerDisplacement } from '../../mmo2d-server/src/domain/player';
 
 import { connect, emit } from './socketService';
-import * as ClientWorld from './domain/world';
+import { UserCommand } from '../../mmo2d-server/src';
 
 let camera: THREE.Camera;
 let scene: THREE.Scene;
@@ -15,10 +15,10 @@ let renderer: THREE.Renderer;
 
 let serverEmissions: ServerEmission[] = [];
 let serverGameState: GameState.GameState | undefined = undefined;
+let clientGameState: GameState.GameState = GameState.GameState ();
+
 let worldActionQueue: { [tick: number]: WorldAction[] } = {};
-let last: number | undefined = undefined;
-const playerMeshes: {[playerId: string]: THREE.Mesh} = {};
-const world = ClientWorld.World ();
+const playerMeshes: [{[playerId: string]: THREE.Mesh}, {[playerId: string]: THREE.Mesh}]= [{}, {}];
 
 let controllerActionQueue: ControllerAction[] = [];
 
@@ -57,7 +57,6 @@ const init = () => {
 	scene = new THREE.Scene();
 
 	scene.add( Ground () );
-	scene.add( world.player.mesh );
 	(Objects ()).map(mesh => scene.add(mesh));
 
 	renderer = new THREE.WebGLRenderer( { antialias: true } );
@@ -130,70 +129,38 @@ const orientPlayerMesh = (playerMesh: THREE.Mesh, player: Player) => {
 
 }
 
-const addPlayerMesh = (player: Player) => {
-	if (playerMeshes[player.id] !== undefined) {
+const addPlayerMesh = (server: boolean) => (player: Player) => {
+	const meshes = playerMeshes[server === true ? 1 : 0];
+	if (meshes[player.id] !== undefined) {
 		return;
 	}
 
 	const playerGeometry = new THREE.BoxGeometry(1, 1, 2);
-	const playerMaterial = new THREE.MeshNormalMaterial( { wireframe: true } );
+	const playerMaterial = new THREE.MeshNormalMaterial( { wireframe: server } );
 	const playerMesh = new THREE.Mesh(playerGeometry, playerMaterial);
 
 	orientPlayerMesh(playerMesh, player);
 
-	playerMeshes[player.id] = playerMesh;
-
-	world.player.mesh.position.copy(playerMesh.position);
-	world.player.mesh.rotation.copy(playerMesh.rotation);
+	meshes[player.id] = playerMesh;
 
 	scene.add(playerMesh);
 }
 
 const removePlayerMesh = (playerId: string) => {
-	const playerMesh = playerMeshes[playerId];
+	const playerMesh = playerMeshes[0][playerId];
+	const serverPlayerMesh = playerMeshes[1][playerId];
 
 	scene.remove(playerMesh);
-	delete playerMeshes[playerId];
+	scene.remove(serverPlayerMesh);
+	delete playerMeshes[0][playerId];
+	delete playerMeshes[1][playerId];
 }
 
 const displacePlayer = (action: PlayerDisplacement) => {
-	const playerMesh = playerMeshes[action.playerId];
+	const playerMesh = playerMeshes[1][action.playerId];
 
 	playerMesh.position.addScaledVector(new THREE.Vector3(action.dP.x, action.dP.y, action.dP.z), 1.0);
 	playerMesh.rotation.z = playerMesh.rotation.z + action.dR.z;
-}
-
-const processEventQueue = () => {
-	while (controllerActionQueue.length > 0) {
-		const event = controllerActionQueue[0];
-		controllerActionQueue = controllerActionQueue.splice(1);
-
-		switch (event.kind) {
-			case 'jump':
-				if (world.player.bottom.get() === 0) {
-					world.player.velocity.z = 3.0;
-				}
-				break;
-			case 'moveForward':
-					world.player.controller.moveForward = event.mapTo;
-				break;
-			case 'moveBackward':
-					world.player.controller.moveBackward = event.mapTo;
-				break;
-			case 'strafeLeft':
-					world.player.controller.strafeLeft = event.mapTo;
-				break;
-			case 'strafeRight':
-					world.player.controller.strafeRight = event.mapTo;
-				break;
-			case 'yawLeft':
-					world.player.controller.yawLeft = event.mapTo;
-				break;
-			case 'yawRight':
-					world.player.controller.yawRight = event.mapTo;
-				break;
-		}
-	}
 }
 
 const processServerEmissions = () => {
@@ -211,9 +178,16 @@ const processServerEmissions = () => {
 							worldActions: { ...worldActionQueue },
 						};
 
+						clientGameState = {
+							tick: emission.tick,
+							world: emission.world,
+							worldActions: { ...worldActionQueue },
+						};
+
 						worldActionQueue = {};
 
-						serverGameState.world.players.map(addPlayerMesh);
+						serverGameState.world.players.map(addPlayerMesh(true));
+						clientGameState.world.players.map(addPlayerMesh(false));
 					} else {
 						console.log('WARNING: received extraneous full update!');
 					}
@@ -232,7 +206,7 @@ const processServerEmissions = () => {
 						
 						switch (action.kind) {
 							case 'world.addPlayer':
-								addPlayerMesh(action.player);
+								addPlayerMesh(true)(action.player);
 								break;
 							case 'world.players.filterOut':
 								removePlayerMesh(action.id);
@@ -248,7 +222,6 @@ const processServerEmissions = () => {
 						}
 
 						serverGameState.world = reduce(action, serverGameState.world);
-						console.log(JSON.stringify(serverGameState.world, undefined, 2));
 					} else {
 						if (worldActionQueue[emission.tick] === undefined) {
 							worldActionQueue[emission.tick] = [];
@@ -294,48 +267,59 @@ setInterval(() => {
 		return;
 	}
 
-  let world: World = { ...serverGameState.world };
-/*
+  let world: World = { ...clientGameState.world };
+
+	const playerControls: ControllerAction[] = [];
+
+	while (controllerActionQueue.length > 0) {
+		playerControls.push(controllerActionQueue[0]);
+		controllerActionQueue.shift();
+	}
+	
+  const userCommandDeltas = GameState.processUserCommands(playerControls.map<UserCommand>(c => {
+		const command: UserCommand = {
+			kind: 'player.controllerAction',
+			playerId: clientGameState.world.players[0].id,
+			action: c,
+		}
+		return command;
+	}));
   userCommandDeltas.forEach(d => {
     world = reduce(d, world);
   });
-*/
-/*
+
   const gameStateDeltas = runPhysicalSimulationStep(world, GameState.TICKRATE / 1000);
 
   gameStateDeltas.forEach(d => {
+		console.log(JSON.stringify(d));
     world = reduce(d, world);
   });
 
-  const allDeltas = [...[]/*userCommandDeltas*//*, ...gameStateDeltas];
-console.log(JSON.stringify(serverGameState));
-  serverGameState.tick++;
-  serverGameState.world = world;
+  const allDeltas = [...[]/*userCommandDeltas*/, ...gameStateDeltas];
+	clientGameState.tick++;
+	clientGameState.world = world;
   
   if (allDeltas.length > 0) {
-    serverGameState.worldActions[serverGameState.tick] = allDeltas;
-	}*/
+    clientGameState.worldActions[serverGameState.tick] = allDeltas;
+	}
 }, GameState.TICKRATE);
 
 const animate = () => {
-	const now = performance.now();
-
-	processEventQueue();
-	ClientWorld.runPhysicalSimulationStep(world, ((now - (last === undefined ? now : last)) / 1000))
-
-	if (serverGameState !== undefined) {
-		serverGameState.world.players.forEach(p => {
-			const mesh = playerMeshes[p.id];
+	if (clientGameState !== undefined) {
+		clientGameState.world.players.forEach(p => {
+			const mesh = playerMeshes[0][p.id];
 
 			orientPlayerMesh(mesh, p);
 		});
 	}
 
-	positionCamera(world.player.mesh);
+	if (clientGameState.world.players.length > 0) {
+		const playerMesh = playerMeshes[0][clientGameState.world.players[0].id];
+
+		positionCamera(playerMesh);
+	}
 
 	requestAnimationFrame( animate );
-
-	last = now;
 
 	renderer.render( scene, camera );
 }
