@@ -2,19 +2,19 @@ import * as THREE from 'three';
 
 import { ControllerAction, Controller } from '../../mmo2d-server/src/domain/controller';
 import { ServerEmission } from '../../mmo2d-server/src/domain/serverEmission';
-import { GameState } from '../../mmo2d-server/src/domain/gameState';
-import { connect, emit } from './socketService';
-import { WorldAction, runPhysicalSimulationStep } from '../../mmo2d-server/src/domain/world';
+import * as GameState from '../../mmo2d-server/src/domain/gameState';
+import { World, WorldAction, runPhysicalSimulationStep, reduce } from '../../mmo2d-server/src/domain/world';
 import { Player, PlayerDisplacement } from '../../mmo2d-server/src/domain/player';
+
+import { connect, emit } from './socketService';
 import * as ClientWorld from './domain/world';
-import { Vector3 } from 'three';
 
 let camera: THREE.Camera;
 let scene: THREE.Scene;
 let renderer: THREE.Renderer;
 
 let serverEmissions: ServerEmission[] = [];
-let serverGameState: GameState | undefined = undefined;
+let serverGameState: GameState.GameState | undefined = undefined;
 let worldActionQueue: { [tick: number]: WorldAction[] } = {};
 let last: number | undefined = undefined;
 const playerMeshes: {[playerId: string]: THREE.Mesh} = {};
@@ -118,20 +118,33 @@ const init = () => {
 	});
 }
 
+const orientPlayerMesh = (playerMesh: THREE.Mesh, player: Player) => {
+
+	playerMesh.position.x = player.position.x;
+	playerMesh.position.y = player.position.y;
+	playerMesh.position.z = player.position.z + 1;
+
+	playerMesh.rotation.x = player.rotation.x;
+	playerMesh.rotation.y = player.rotation.y;
+	playerMesh.rotation.z = player.rotation.z;
+
+}
+
 const addPlayerMesh = (player: Player) => {
 	if (playerMeshes[player.id] !== undefined) {
 		return;
 	}
 
-	const playerGeometry = new THREE.BoxGeometry(1, 1, 1);
+	const playerGeometry = new THREE.BoxGeometry(1, 1, 2);
 	const playerMaterial = new THREE.MeshNormalMaterial( { wireframe: true } );
 	const playerMesh = new THREE.Mesh(playerGeometry, playerMaterial);
 
-	playerMesh.position.x = player.position.x;
-	playerMesh.position.y = player.position.y;
-	playerMesh.position.z = player.position.z;
+	orientPlayerMesh(playerMesh, player);
 
 	playerMeshes[player.id] = playerMesh;
+
+	world.player.mesh.position.copy(playerMesh.position);
+	world.player.mesh.rotation.copy(playerMesh.rotation);
 
 	scene.add(playerMesh);
 }
@@ -146,9 +159,8 @@ const removePlayerMesh = (playerId: string) => {
 const displacePlayer = (action: PlayerDisplacement) => {
 	const playerMesh = playerMeshes[action.playerId];
 
-	playerMesh.position.addScaledVector(new Vector3(action.dP.x, action.dP.y, action.dP.z), 1.0);
-	// playerMesh.rotation.addScaledVector(new Vector3(action.dP.x, action.dP.y, action.dP.z), 1.0);
-	// world.player.addScaledVector(new Vector3(action.dP.x, action.dP.y, action.dP.z), 1.0);
+	playerMesh.position.addScaledVector(new THREE.Vector3(action.dP.x, action.dP.y, action.dP.z), 1.0);
+	playerMesh.rotation.z = playerMesh.rotation.z + action.dR.z;
 }
 
 const processEventQueue = () => {
@@ -182,7 +194,9 @@ const processEventQueue = () => {
 				break;
 		}
 	}
+}
 
+const processServerEmissions = () => {
 	if (serverEmissions.length > 0) {
 		while (serverEmissions.length > 0) {
 			const emission = serverEmissions[0];
@@ -206,6 +220,9 @@ const processEventQueue = () => {
 					break;
 				case 'gameStateDeltaEmission':
 					if (serverGameState !== undefined) {
+						if (serverGameState.tick >= emission.tick) {
+							break;
+						}
 						if (serverGameState.worldActions[emission.tick] === undefined) {
 							serverGameState.worldActions[emission.tick] = [];
 						}
@@ -228,8 +245,10 @@ const processEventQueue = () => {
 							default:
 								const _exhaustiveCheck: never = action;
 								return _exhaustiveCheck;
-
 						}
+
+						serverGameState.world = reduce(action, serverGameState.world);
+						console.log(JSON.stringify(serverGameState.world, undefined, 2));
 					} else {
 						if (worldActionQueue[emission.tick] === undefined) {
 							worldActionQueue[emission.tick] = [];
@@ -267,17 +286,52 @@ const positionCamera = (target: THREE.Mesh) => {
 
 };
 
-const animate = () => {
 
+setInterval(() => {
+	processServerEmissions();
+
+	if (serverGameState === undefined) {
+		return;
+	}
+
+  let world: World = { ...serverGameState.world };
+/*
+  userCommandDeltas.forEach(d => {
+    world = reduce(d, world);
+  });
+*/
+/*
+  const gameStateDeltas = runPhysicalSimulationStep(world, GameState.TICKRATE / 1000);
+
+  gameStateDeltas.forEach(d => {
+    world = reduce(d, world);
+  });
+
+  const allDeltas = [...[]/*userCommandDeltas*//*, ...gameStateDeltas];
+console.log(JSON.stringify(serverGameState));
+  serverGameState.tick++;
+  serverGameState.world = world;
+  
+  if (allDeltas.length > 0) {
+    serverGameState.worldActions[serverGameState.tick] = allDeltas;
+	}*/
+}, GameState.TICKRATE);
+
+const animate = () => {
 	const now = performance.now();
 
 	processEventQueue();
+	ClientWorld.runPhysicalSimulationStep(world, ((now - (last === undefined ? now : last)) / 1000))
 
 	if (serverGameState !== undefined) {
-		runPhysicalSimulationStep(serverGameState.world, ((now - (last === undefined ? now : last)) / 1000));
+		serverGameState.world.players.forEach(p => {
+			const mesh = playerMeshes[p.id];
+
+			orientPlayerMesh(mesh, p);
+		});
 	}
-	ClientWorld.runPhysicalSimulationStep(world, ((now - (last === undefined ? now : last)) / 1000))
-	positionCamera(world.player.mesh)
+
+	positionCamera(world.player.mesh);
 
 	requestAnimationFrame( animate );
 
