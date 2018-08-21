@@ -259,6 +259,9 @@ const positionCamera = (target: THREE.Mesh) => {
 
 };
 
+let delta = 0;
+let lastFrameTimeMs = performance.now();
+
 setTimeout(function tick () {
 	const start = performance.now();
 	processServerEmissions();
@@ -282,15 +285,26 @@ setTimeout(function tick () {
 	}));
   userCommandDeltas.forEach(d => {
     world = reduce(d, world);
-  });
+	});
+	
+	delta += start - lastFrameTimeMs;
+	lastFrameTimeMs = start;
+	
 
-  const gameStateDeltas = runPhysicalSimulationStep(world, GameState.TICKRATE / 1000);
+  const allDeltas: GameState.GameStateDelta[] = [...[]/*userCommandDeltas*/];
 
-  gameStateDeltas.forEach(d => {
-    world = reduce(d, world);
-  });
 
-  const allDeltas = [...[]/*userCommandDeltas*/, ...gameStateDeltas];
+	while (delta >= GameState.TICKRATE) {
+		const gameStateDeltas = runPhysicalSimulationStep(world, GameState.TICKRATE / 1000);
+	
+		gameStateDeltas.forEach(d => {
+			world = reduce(d, world);
+			allDeltas.push(d);
+		});
+
+		delta -= GameState.TICKRATE;
+	}
+
 	clientGameState.tick++;
 	clientGameState.world = world;
   
