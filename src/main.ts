@@ -258,6 +258,7 @@ const positionCamera = (target: THREE.Mesh) => {
 
 let delta = 0;
 let lastFrameTimeMs = performance.now();
+let clearExpiredStates = false;
 
 setTimeout(function tick () {
 	const start = performance.now();
@@ -295,8 +296,8 @@ setTimeout(function tick () {
 			deltas: [...userCommandDeltas],
 		}
 
-		while (delta >= GameState.TICKRATE) {
-			const gameStateDeltas = runPhysicalSimulationStep(nextGameState.world, GameState.TICKRATE / 1000);
+		while (delta >= GameState.TICKRATE_MS) {
+			const gameStateDeltas = runPhysicalSimulationStep(nextGameState.world, GameState.TICKRATE_MS / 1000);
 		
 			gameStateDeltas.forEach(d => {
 				nextGameState.world = reduce(d, nextGameState.world);
@@ -304,6 +305,13 @@ setTimeout(function tick () {
 			});
 
 			clientGameStates.push(nextGameState);
+			
+
+			if (clearExpiredStates) {
+				clientGameStates.shift()
+			} else if ((clientGameStates.length-1) * GameState.TICKRATE_MS > GameState.EXPIRE_AFTER_MS) {
+				clearExpiredStates = true;
+			}
 
 			nextGameState = {
 				tick: nextGameState.tick + 1,
@@ -311,14 +319,14 @@ setTimeout(function tick () {
 				deltas: [],
 			};
 
-			delta -= GameState.TICKRATE;
+			delta -= GameState.TICKRATE_MS;
 		}
 	}
 
 	lastFrameTimeMs = start;
 
-	setTimeout(tick, GameState.TICKRATE - (performance.now() - start));
-}, GameState.TICKRATE);
+	setTimeout(tick, GameState.TICKRATE_MS - (performance.now() - start));
+}, GameState.TICKRATE_MS);
 
 const animate = () => {
 	const latestClientGameState = latestGameState(clientGameStates);
