@@ -6,13 +6,13 @@ const SERVER_URL = 'http://localhost:4000';
 
 const socket = io(SERVER_URL);
 
-export const connect = (serverEmissions: ServerEmission[]) => {
+export const connect = (serverEmissions: (ServerEmission & {playerId: string})[]) => {
   socket.on('connect', function() {
     console.log('connect');
   });
   
   socket.on('serverEmission', function(data: ServerEmission) {
-    serverEmissions.push(data);
+    serverEmissions.push({...data, playerId: socket.id});
   });
 
   // socket.emit('input', {hello: 'world'});

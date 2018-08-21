@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 
-import { ControllerAction, Controller } from '../../mmo2d-server/src/domain/controller';
+import { ControllerAction } from '../../mmo2d-server/src/domain/controller';
 import { ServerEmission } from '../../mmo2d-server/src/domain/serverEmission';
 import * as GameState from '../../mmo2d-server/src/domain/gameState';
-import { World, WorldAction, reduce, runPhysicalSimulationStep } from '../../mmo2d-server/src/domain/world';
-import { Player, PlayerDisplacement } from '../../mmo2d-server/src/domain/player';
+import { World, reduce, runPhysicalSimulationStep } from '../../mmo2d-server/src/domain/world';
+import { Player } from '../../mmo2d-server/src/domain/player';
 
 import { connect, emit } from './socketService';
 import { UserCommand } from '../../mmo2d-server/src';
@@ -13,14 +13,38 @@ let camera: THREE.Camera;
 let scene: THREE.Scene;
 let renderer: THREE.Renderer;
 
-let serverEmissions: ServerEmission[] = [];
-let serverGameState: GameState.GameState | undefined = undefined;
-let clientGameState: GameState.GameState = GameState.GameState ();
+let serverEmissions: (ServerEmission & {playerId: string})[] = [];
+let ID = '';
 
-let worldActionQueue: { [tick: number]: WorldAction[] } = {};
-const playerMeshes: [{[playerId: string]: THREE.Mesh}, {[playerId: string]: THREE.Mesh}]= [{}, {}];
+let normalizedServerGameState: GameState.GameState | undefined = undefined;
+
+const serverGameStates: GameState.GameState[] = [];
+const clientGameStates: GameState.GameState[] = [];
+
+const clientMeshes: {[playerId: string]: THREE.Mesh} = {};
+const normServMeshes: {[playerId: string]: THREE.Mesh} = {};
+const servMeshes: {[playerId: string]: THREE.Mesh} = {};
+
+const playerMeshes = (kind: 'client' | 'normServ' | 'serv'): {[playerId: string]: THREE.Mesh} => {
+	switch (kind) {
+		case 'client':
+			return clientMeshes;
+		case 'normServ':
+			return normServMeshes;
+		case 'serv':
+			return servMeshes;
+	}
+}
 
 let controllerActionQueue: ControllerAction[] = [];
+
+const latestGameState = (gameStatesArray: GameState.GameState[]): GameState.GameState | undefined => {
+	if (gameStatesArray.length === 0) {
+		return undefined;
+	} else {
+		return gameStatesArray[gameStatesArray.length - 1];
+	}
+}
 
 const Objects = (): THREE.Mesh[] => {
 
@@ -129,38 +153,38 @@ const orientPlayerMesh = (playerMesh: THREE.Mesh, player: Player) => {
 
 }
 
-const addPlayerMesh = (server: boolean) => (player: Player) => {
-	const meshes = playerMeshes[server === true ? 1 : 0];
+type GameStateKind = 'client' | 'normServ' | 'serv';
+
+const addPlayerMesh = (kind: GameStateKind) => (player: Player) => {
+	const meshes = playerMeshes(kind);
 	if (meshes[player.id] !== undefined) {
 		return;
 	}
 
 	const playerGeometry = new THREE.BoxGeometry(1, 1, 2);
-	const playerMaterial = new THREE.MeshNormalMaterial( { wireframe: server } );
+	const playerMaterial = new THREE.MeshNormalMaterial( {
+		wireframe: kind === 'normServ' || kind === 'serv',
+		flatShading: kind === 'normServ'
+	} );
+	
+	if (kind === 'normServ') {
+		playerGeometry.scale(0.9, 0.9, 0.9);
+	}
+
 	const playerMesh = new THREE.Mesh(playerGeometry, playerMaterial);
 
 	orientPlayerMesh(playerMesh, player);
+
 
 	meshes[player.id] = playerMesh;
 
 	scene.add(playerMesh);
 }
 
-const removePlayerMesh = (playerId: string) => {
-	const playerMesh = playerMeshes[0][playerId];
-	const serverPlayerMesh = playerMeshes[1][playerId];
-
+const removePlayerMesh = (kind: GameStateKind) => (playerId: string) => {
+	const playerMesh = playerMeshes(kind)[playerId];
 	scene.remove(playerMesh);
-	scene.remove(serverPlayerMesh);
-	delete playerMeshes[0][playerId];
-	delete playerMeshes[1][playerId];
-}
-
-const displacePlayer = (action: PlayerDisplacement) => {
-	const playerMesh = playerMeshes[1][action.playerId];
-
-	playerMesh.position.addScaledVector(new THREE.Vector3(action.dP.x, action.dP.y, action.dP.z), 1.0);
-	playerMesh.rotation.z = playerMesh.rotation.z + action.dR.z;
+	delete playerMeshes(kind)[playerId];
 }
 
 const processServerEmissions = () => {
@@ -171,74 +195,47 @@ const processServerEmissions = () => {
 
 			switch (emission.kind) {
 				case 'fullUpdate':
-					if (serverGameState === undefined) {
-						serverGameState = {
-							tick: emission.tick,
-							world: emission.world,
-							worldActions: { ...worldActionQueue },
-						};
+					if (normalizedServerGameState === undefined) {
+						ID = emission.playerId;
 
-						clientGameState = {
-							tick: emission.tick,
-							world: emission.world,
-							worldActions: { ...worldActionQueue },
-						};
+						emission.gameState.world.players.forEach(p => {
+							addPlayerMesh('client')(p);
+							addPlayerMesh('normServ')(p);
+							addPlayerMesh('serv')(p);
+						});
 
-						worldActionQueue = {};
-
-						serverGameState.world.players.map(addPlayerMesh(true));
-						clientGameState.world.players.map(addPlayerMesh(false));
+						clientGameStates.push(emission.gameState);
+						normalizedServerGameState = {...emission.gameState};
 					} else {
-						console.log('WARNING: received extraneous full update!');
+						const normy = normalizedServerGameState;
+						emission.gameState.deltas.forEach(action => {
+							switch (action.kind) {
+								case 'world.addPlayer':
+									addPlayerMesh('client')(action.player);
+									addPlayerMesh('normServ')(action.player);
+									addPlayerMesh('serv')(action.player);
+									break;
+								case 'world.players.filterOut':
+									removePlayerMesh('client')(action.id);
+									removePlayerMesh('normServ')(action.id);
+									removePlayerMesh('serv')(action.id);
+									break;
+								case 'player.displacement':
+									break;
+								case 'player.controllerAction':
+									break;
+								default:
+									const _exhaustiveCheck: never = action;
+									return _exhaustiveCheck;
+							}
+
+							normy.world = reduce(action, normy.world);
+						});
 					}
-					break;
-				case 'gameStateDeltaEmission':
-					if (serverGameState !== undefined) {
-						if (serverGameState.tick >= emission.tick) {
-							break;
-						}
-						if (serverGameState.worldActions[emission.tick] === undefined) {
-							serverGameState.worldActions[emission.tick] = [];
-						}
-
-						const action = emission.gsd;
-						serverGameState.worldActions[emission.tick].push(action);
-						
-						switch (action.kind) {
-							case 'world.addPlayer':
-								addPlayerMesh(true)(action.player);
-								break;
-							case 'world.players.filterOut':
-								removePlayerMesh(action.id);
-								break;
-							case 'player.displacement':
-								displacePlayer(action);
-								break;
-							case 'player.controllerAction':
-								break;
-							default:
-								const _exhaustiveCheck: never = action;
-								return _exhaustiveCheck;
-						}
-
-						serverGameState.world = reduce(action, serverGameState.world);
-					} else {
-						if (worldActionQueue[emission.tick] === undefined) {
-							worldActionQueue[emission.tick] = [];
-						}
-
-						worldActionQueue[emission.tick].push(emission.gsd);
-					}
-					break;
-				default:
-					const _exhaustiveCheck: never = emission;
-					return _exhaustiveCheck;
+					serverGameStates.push(emission.gameState);
+				break;
 			}
-
-			// console.log(JSON.stringify(emission, undefined, 2));
 		}
-
-		// console.log('serverGameState:', JSON.stringify(serverGameState, undefined, 2));
 	}
 }
 
@@ -266,68 +263,94 @@ setTimeout(function tick () {
 	const start = performance.now();
 	processServerEmissions();
 
-  let world: World = { ...clientGameState.world };
+	const staleClientGameState = latestGameState(clientGameStates);
 
-	const playerControls: ControllerAction[] = [];
+	if (staleClientGameState !== undefined) {
+  	let world: World = { ...staleClientGameState.world };
 
-	while (controllerActionQueue.length > 0) {
-		playerControls.push(controllerActionQueue[0]);
-		controllerActionQueue.shift();
-	}
-	
-  const userCommandDeltas = GameState.processUserCommands(playerControls.map<UserCommand>(c => {
-		const command: UserCommand = {
-			kind: 'player.controllerAction',
-			playerId: clientGameState.world.players[0].id,
-			action: c,
+		const playerControls: ControllerAction[] = [];
+
+		while (controllerActionQueue.length > 0) {
+			playerControls.push(controllerActionQueue[0]);
+			controllerActionQueue.shift();
 		}
-		return command;
-	}));
-  userCommandDeltas.forEach(d => {
-    world = reduce(d, world);
-	});
-	
-	delta += start - lastFrameTimeMs;
-	lastFrameTimeMs = start;
-	
-
-  const allDeltas: GameState.GameStateDelta[] = [...[]/*userCommandDeltas*/];
-
-
-	while (delta >= GameState.TICKRATE) {
-		const gameStateDeltas = runPhysicalSimulationStep(world, GameState.TICKRATE / 1000);
-	
-		gameStateDeltas.forEach(d => {
+		
+		const userCommandDeltas = GameState.processUserCommands(playerControls.map<UserCommand>(c => {
+			const command: UserCommand = {
+				kind: 'player.controllerAction',
+				playerId: ID,
+				action: c,
+			}
+			return command;
+		}));
+		userCommandDeltas.forEach(d => {
 			world = reduce(d, world);
-			allDeltas.push(d);
 		});
+		
+		delta += start - lastFrameTimeMs;
+		
+		let nextGameState: GameState.GameState = {
+			tick: staleClientGameState.tick + 1,
+			world: world,
+			deltas: [...userCommandDeltas],
+		}
 
-		delta -= GameState.TICKRATE;
+		while (delta >= GameState.TICKRATE) {
+			const gameStateDeltas = runPhysicalSimulationStep(nextGameState.world, GameState.TICKRATE / 1000);
+		
+			gameStateDeltas.forEach(d => {
+				nextGameState.world = reduce(d, nextGameState.world);
+				nextGameState.deltas.push(d);
+			});
+
+			clientGameStates.push(nextGameState);
+
+			nextGameState = {
+				tick: nextGameState.tick + 1,
+				world: nextGameState.world,
+				deltas: [],
+			};
+
+			delta -= GameState.TICKRATE;
+		}
 	}
 
-	clientGameState.tick++;
-	clientGameState.world = world;
-  
-  if (allDeltas.length > 0) {
-    clientGameState.worldActions[clientGameState.tick] = allDeltas;
-	}
+	lastFrameTimeMs = start;
 
 	setTimeout(tick, GameState.TICKRATE - (performance.now() - start));
 }, GameState.TICKRATE);
 
 const animate = () => {
-	if (clientGameState !== undefined) {
-		clientGameState.world.players.forEach(p => {
-			const mesh = playerMeshes[0][p.id];
+	const latestClientGameState = latestGameState(clientGameStates);
+	
+	if (latestClientGameState !== undefined) {
+		latestClientGameState.world.players.forEach(p => {
+			const mesh = playerMeshes('client')[p.id];
+
+			orientPlayerMesh(mesh, p);
+		});
+
+		const playerMesh = playerMeshes('client')[ID];
+
+		positionCamera(playerMesh);
+	}
+
+	if (normalizedServerGameState !== undefined) {
+		normalizedServerGameState.world.players.forEach(p => {
+			const mesh = playerMeshes('normServ')[p.id];
 
 			orientPlayerMesh(mesh, p);
 		});
 	}
 
-	if (clientGameState.world.players.length > 0) {
-		const playerMesh = playerMeshes[0][clientGameState.world.players[0].id];
+	const latestServerGameState = latestGameState(serverGameStates);
+	
+	if (latestServerGameState !== undefined) {
+		latestServerGameState.world.players.forEach(p => {
+			const mesh = playerMeshes('serv')[p.id];
 
-		positionCamera(playerMesh);
+			orientPlayerMesh(mesh, p);
+		});
 	}
 
 	requestAnimationFrame( animate );
