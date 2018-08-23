@@ -4,7 +4,7 @@ import { ControllerAction } from '../../mmo2d-server/src/domain/controller';
 import { ServerEmission } from '../../mmo2d-server/src/domain/serverEmission';
 import * as GameState from '../../mmo2d-server/src/domain/gameState';
 import { World, reduce, runPhysicalSimulationStep } from '../../mmo2d-server/src/domain/world';
-import { Player } from '../../mmo2d-server/src/domain/player';
+import * as Player from '../../mmo2d-server/src/domain/player';
 import * as Vector3 from '../../mmo2d-server/src/domain/vector3';
 
 import { connect, emit } from './socketService';
@@ -15,7 +15,7 @@ let scene: THREE.Scene;
 let renderer: THREE.Renderer;
 
 
-let userCommandQueue: UserCommand[] = [];
+let gameStateDeltaQueue: GameState.GameStateDelta[] = [];
 let serverEmissions: (ServerEmission & {playerId: string})[] = [];
 let ID = '';
 let TICK = 0;
@@ -90,7 +90,7 @@ const pushUserCommand = (action: ControllerAction) => {
 		playerId: ID,
 		action: action
 	};
-	userCommandQueue.push(userCommand);
+	gameStateDeltaQueue.push(userCommand);
 	emit(userCommand);
 }
 
@@ -162,7 +162,7 @@ const init = () => {
 	});
 }
 
-const orientPlayerMesh = (playerMesh: THREE.Mesh, playerPrior: Player, playerLater: Player) => {
+const orientPlayerMesh = (playerMesh: THREE.Mesh, playerPrior: Player.Player, playerLater: Player.Player) => {
 	const interp = (performance.now() - lastFrameTimeMs) / GameState.TICKRATE_MS;
 	const diffPos = Vector3.subtract(playerLater.position)(playerPrior.position);
 	const interpPos = Vector3.add(playerPrior.position)(Vector3.scale(interp)(diffPos));
@@ -181,7 +181,7 @@ const orientPlayerMesh = (playerMesh: THREE.Mesh, playerPrior: Player, playerLat
 
 type GameStateKind = 'client' | 'normServ' | 'serv';
 
-const addPlayerMesh = (kind: GameStateKind) => (player: Player) => {
+const addPlayerMesh = (kind: GameStateKind) => (player: Player.Player) => {
 	const meshes = playerMeshes(kind);
 	if (meshes[player.id] !== undefined) {
 		console.log("warning! Tried to add duplicate mesh")
@@ -233,21 +233,35 @@ const processServerEmissions = () => {
 						normalizedServerGameState = {...emission.gameState};
 					} else {
 						const normy: GameState.GameState = normalizedServerGameState as GameState.GameState;
+
+						let serverPlayerDisplacement: Player.PlayerDisplacement = {
+							kind: 'player.displacement',
+							playerId: ID,
+							dP: Vector3.ZERO,
+							dR: Vector3.ZERO,
+							dV: Vector3.ZERO,
+						};
+
 						emission.gameState.deltas.forEach(action => {
 							switch (action.kind) {
 								case 'world.addPlayer':
 									addPlayerMesh('client')(action.player);
 									addPlayerMesh('normServ')(action.player);
 									addPlayerMesh('serv')(action.player);
-									userCommandQueue.push(action);
+									gameStateDeltaQueue.push(action);
 									break;
 								case 'world.players.filterOut':
 									removePlayerMesh('client')(action.id);
 									removePlayerMesh('normServ')(action.id);
 									removePlayerMesh('serv')(action.id);
-									userCommandQueue.push(action);
+									gameStateDeltaQueue.push(action);
 									break;
 								case 'player.displacement':
+									if (action.playerId === ID && ID !== '') {
+										serverPlayerDisplacement = {...action};
+									} else {
+										gameStateDeltaQueue.push(action);
+									}
 									break;
 								case 'player.controllerAction':
 									break;
@@ -259,6 +273,40 @@ const processServerEmissions = () => {
 							normy.world = reduce(action, normy.world);
 
 						});
+						
+						const correspondingClientGameState = gameStateAtTick(emission.gameState.tick, clientGameStates);
+
+						if (correspondingClientGameState !== undefined) {
+							const predictedPositionDeltas = correspondingClientGameState.deltas.filter(d => d.kind === 'player.displacement' && d.playerId === ID) as Player.PlayerDisplacement[];
+
+							let predictedPositionDelta: Player.PlayerDisplacement = {
+								kind: 'player.displacement',
+								playerId: ID,
+								dP: Vector3.ZERO,
+								dR: Vector3.ZERO,
+								dV: Vector3.ZERO,
+							}
+
+							if (predictedPositionDeltas.length !== 0) {
+								if (predictedPositionDeltas.length > 1) {
+								  throw Error ('this should not happen');
+								}
+
+								predictedPositionDelta = predictedPositionDeltas[0];
+							}
+
+							const serverPositionCorrection: Player.PlayerDisplacement = {
+								kind: 'player.displacement',
+								playerId: ID,
+								dP: Vector3.subtract(serverPlayerDisplacement.dP)(predictedPositionDelta.dP),
+								dR: Vector3.subtract(serverPlayerDisplacement.dR)(predictedPositionDelta.dR),
+								dV: Vector3.ZERO,
+							}
+							
+							// if (Player.shouldEmit(serverPositionCorrection)) {
+								gameStateDeltaQueue.push(serverPositionCorrection);
+							// }
+						}
 					}
 					serverGameStates.push(emission.gameState);
 				break;
@@ -297,11 +345,11 @@ setTimeout(function tick () {
 	if (staleClientGameState !== undefined) {
   	let world: World = { ...staleClientGameState.world };
 
-		const playerControls: UserCommand[] = [];
+		const playerControls: GameState.GameStateDelta[] = [];
 
-		while (userCommandQueue.length > 0) {
-			playerControls.push(userCommandQueue[0]);
-			userCommandQueue.shift();
+		while (gameStateDeltaQueue.length > 0) {
+			playerControls.push(gameStateDeltaQueue[0]);
+			gameStateDeltaQueue.shift();
 		}
 		
 		const userCommandDeltas = GameState.processUserCommands(playerControls);
@@ -355,18 +403,17 @@ setTimeout(function tick () {
 }, GameState.TICKRATE_MS);
 
 const animate = () => {
-	const priorTick = TICK - Math.floor(LERP_MS / GameState.TICKRATE_MS);
-	const priorClientGameState = gameStateAtTick(priorTick, clientGameStates);
-	const laterClientGameState = gameStateAtTick(priorTick+1, clientGameStates);
+	const priorClientGameState = gameStateAtTick(TICK-1, clientGameStates);
+	const laterClientGameState = gameStateAtTick(TICK, clientGameStates);
 	
 	if (priorClientGameState !== undefined) {
-		priorClientGameState.world.players.forEach(p => {
-			const mesh = playerMeshes('client')[p.id];
+		priorClientGameState.world.players.forEach(priorPlayer => {
+			const mesh = playerMeshes('client')[priorPlayer.id];
 
-			const p2 = (laterClientGameState as GameState.GameState).world.players.filter(p => p.id === p.id)[0];
+			const laterPlayer = (laterClientGameState as GameState.GameState).world.players.filter(p => p.id === priorPlayer.id)[0];
 
-			if (p2 !== undefined) {
-				orientPlayerMesh(mesh, p, p2);
+			if (mesh !== undefined && laterPlayer !== undefined) {
+				orientPlayerMesh(mesh, priorPlayer, laterPlayer);
 			}
 		});
 
@@ -376,27 +423,27 @@ const animate = () => {
 			positionCamera(playerMesh);
 		}
 	}
-/*
+
 	if (normalizedServerGameState !== undefined) {
 		normalizedServerGameState.world.players.forEach(p => {
 			const mesh = playerMeshes('normServ')[p.id];
 
-			orientPlayerMesh(mesh, p);
+			orientPlayerMesh(mesh, p, p);
 		});
 	}
-*/
 
+	const priorTick = TICK - Math.floor(LERP_MS / GameState.TICKRATE_MS);
 	const priorServerGameState = gameStateAtTick(priorTick, serverGameStates);
 	const laterServerGameState = gameStateAtTick(priorTick+1, serverGameStates);
 	
 	if (priorServerGameState !== undefined) {
-		priorServerGameState.world.players.forEach(p => {
-			const mesh = playerMeshes('serv')[p.id];
+		priorServerGameState.world.players.forEach(priorPlayer => {
+			const mesh = playerMeshes('serv')[priorPlayer.id];
 
-			const p2 = (laterServerGameState as GameState.GameState).world.players.filter(p => p.id === p.id)[0];
+			const laterPlayer = (laterServerGameState as GameState.GameState).world.players.filter(p => p.id === priorPlayer.id)[0];
 
-			if (p2 !== undefined) {
-				orientPlayerMesh(mesh, p, p2);
+			if (mesh !== undefined && laterPlayer !== undefined) {
+				orientPlayerMesh(mesh, priorPlayer, laterPlayer);
 			}
 		});
 	}
