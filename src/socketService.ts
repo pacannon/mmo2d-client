@@ -1,6 +1,7 @@
 import io from 'socket.io-client';
 import { ServerEmission } from '../../mmo2d-server/src/domain/serverEmission';
 import { ControllerAction } from '../../mmo2d-server/src/domain/controller';
+import { UserCommand } from '../../mmo2d-server/src';
 
 const SERVER_URL = 'http://localhost:4000';
 
@@ -23,6 +24,6 @@ export const connect = (serverEmissions: (ServerEmission & {playerId: string})[]
   });
 }
 
-export const emit = (action: ControllerAction): void => {
+export const emit = (action: UserCommand): void => {
   socket.emit('clientEmission', action);
 }

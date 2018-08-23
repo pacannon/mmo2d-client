@@ -13,6 +13,8 @@ let camera: THREE.Camera;
 let scene: THREE.Scene;
 let renderer: THREE.Renderer;
 
+
+let userCommandQueue: UserCommand[] = [];
 let serverEmissions: (ServerEmission & {playerId: string})[] = [];
 let ID = '';
 
@@ -35,8 +37,6 @@ const playerMeshes = (kind: 'client' | 'normServ' | 'serv'): {[playerId: string]
 			return servMeshes;
 	}
 }
-
-let controllerActionQueue: ControllerAction[] = [];
 
 const latestGameState = (gameStatesArray: GameState.GameState[]): GameState.GameState | undefined => {
 	if (gameStatesArray.length === 0) {
@@ -68,9 +68,14 @@ const Ground = (): THREE.Mesh => {
 
 };
 
-const pushControllerAction = (action: ControllerAction) => {
-	controllerActionQueue.push(action);
-	emit(action);
+const pushUserCommand = (action: ControllerAction) => {
+	const userCommand: UserCommand = {
+		kind: 'player.controllerAction',
+		playerId: ID,
+		action: action
+	};
+	userCommandQueue.push(userCommand);
+	emit(userCommand);
 }
 
 const init = () => {
@@ -96,19 +101,19 @@ const init = () => {
 		const keyCode = event.which;
 
 		if (keyCode == 87) {
-			pushControllerAction({kind: 'moveForward', mapTo: mapTo});
+			pushUserCommand({kind: 'moveForward', mapTo: mapTo});
 		} else if (keyCode == 83) {
-			pushControllerAction({kind: 'moveBackward', mapTo: mapTo});
+			pushUserCommand({kind: 'moveBackward', mapTo: mapTo});
 		} else if (keyCode == 81) {
-			pushControllerAction({kind: 'strafeLeft', mapTo: mapTo});
+			pushUserCommand({kind: 'strafeLeft', mapTo: mapTo});
 		} else if (keyCode == 69) {
-			pushControllerAction({kind: 'strafeRight', mapTo: mapTo});
+			pushUserCommand({kind: 'strafeRight', mapTo: mapTo});
 		} else if (keyCode == 65) {
-			pushControllerAction({kind: 'yawLeft', mapTo: mapTo});
+			pushUserCommand({kind: 'yawLeft', mapTo: mapTo});
 		} else if (keyCode == 68) {
-			pushControllerAction({kind: 'yawRight', mapTo: mapTo});
+			pushUserCommand({kind: 'yawRight', mapTo: mapTo});
 		} else if (keyCode == 32) {
-			pushControllerAction({kind: 'jump'});
+			pushUserCommand({kind: 'jump'});
 		}
 	});
 
@@ -121,17 +126,17 @@ const init = () => {
 		const keyCode = event.which;
 
 		if (keyCode == 87) {
-			pushControllerAction({kind: 'moveForward', mapTo: mapTo});
+			pushUserCommand({kind: 'moveForward', mapTo: mapTo});
 		} else if (keyCode == 83) {
-			pushControllerAction({kind: 'moveBackward', mapTo: mapTo});
+			pushUserCommand({kind: 'moveBackward', mapTo: mapTo});
 		} else if (keyCode == 81) {
-			pushControllerAction({kind: 'strafeLeft', mapTo: mapTo});
+			pushUserCommand({kind: 'strafeLeft', mapTo: mapTo});
 		} else if (keyCode == 69) {
-			pushControllerAction({kind: 'strafeRight', mapTo: mapTo});
+			pushUserCommand({kind: 'strafeRight', mapTo: mapTo});
 		} else if (keyCode == 65) {
-			pushControllerAction({kind: 'yawLeft', mapTo: mapTo});
+			pushUserCommand({kind: 'yawLeft', mapTo: mapTo});
 		} else if (keyCode == 68) {
-			pushControllerAction({kind: 'yawRight', mapTo: mapTo});
+			pushUserCommand({kind: 'yawRight', mapTo: mapTo});
 		}
 	});
 	
@@ -158,6 +163,7 @@ type GameStateKind = 'client' | 'normServ' | 'serv';
 const addPlayerMesh = (kind: GameStateKind) => (player: Player) => {
 	const meshes = playerMeshes(kind);
 	if (meshes[player.id] !== undefined) {
+		console.log("warning! Tried to add duplicate mesh")
 		return;
 	}
 
@@ -195,7 +201,7 @@ const processServerEmissions = () => {
 
 			switch (emission.kind) {
 				case 'fullUpdate':
-					if (normalizedServerGameState === undefined) {
+					if (ID === '') {
 						ID = emission.playerId;
 
 						emission.gameState.world.players.forEach(p => {
@@ -207,18 +213,20 @@ const processServerEmissions = () => {
 						clientGameStates.push(emission.gameState);
 						normalizedServerGameState = {...emission.gameState};
 					} else {
-						const normy = normalizedServerGameState;
+						const normy: GameState.GameState = normalizedServerGameState as GameState.GameState;
 						emission.gameState.deltas.forEach(action => {
 							switch (action.kind) {
 								case 'world.addPlayer':
 									addPlayerMesh('client')(action.player);
 									addPlayerMesh('normServ')(action.player);
 									addPlayerMesh('serv')(action.player);
+									userCommandQueue.push(action);
 									break;
 								case 'world.players.filterOut':
 									removePlayerMesh('client')(action.id);
 									removePlayerMesh('normServ')(action.id);
 									removePlayerMesh('serv')(action.id);
+									userCommandQueue.push(action);
 									break;
 								case 'player.displacement':
 									break;
@@ -230,6 +238,7 @@ const processServerEmissions = () => {
 							}
 
 							normy.world = reduce(action, normy.world);
+
 						});
 					}
 					serverGameStates.push(emission.gameState);
@@ -269,21 +278,14 @@ setTimeout(function tick () {
 	if (staleClientGameState !== undefined) {
   	let world: World = { ...staleClientGameState.world };
 
-		const playerControls: ControllerAction[] = [];
+		const playerControls: UserCommand[] = [];
 
-		while (controllerActionQueue.length > 0) {
-			playerControls.push(controllerActionQueue[0]);
-			controllerActionQueue.shift();
+		while (userCommandQueue.length > 0) {
+			playerControls.push(userCommandQueue[0]);
+			userCommandQueue.shift();
 		}
 		
-		const userCommandDeltas = GameState.processUserCommands(playerControls.map<UserCommand>(c => {
-			const command: UserCommand = {
-				kind: 'player.controllerAction',
-				playerId: ID,
-				action: c,
-			}
-			return command;
-		}));
+		const userCommandDeltas = GameState.processUserCommands(playerControls);
 		userCommandDeltas.forEach(d => {
 			world = reduce(d, world);
 		});
@@ -296,7 +298,11 @@ setTimeout(function tick () {
 			deltas: [...userCommandDeltas],
 		}
 
+		let count = 0;
 		while (delta >= GameState.TICKRATE_MS) {
+			if (count++ > 1) {
+				console.log(count);
+			}
 			const gameStateDeltas = runPhysicalSimulationStep(nextGameState.world, GameState.TICKRATE_MS / 1000);
 		
 			gameStateDeltas.forEach(d => {
@@ -340,7 +346,9 @@ const animate = () => {
 
 		const playerMesh = playerMeshes('client')[ID];
 
-		positionCamera(playerMesh);
+		if (playerMesh !== undefined) {
+			positionCamera(playerMesh);
+		}
 	}
 
 	if (normalizedServerGameState !== undefined) {
