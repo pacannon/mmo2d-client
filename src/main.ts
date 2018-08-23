@@ -5,6 +5,7 @@ import { ServerEmission } from '../../mmo2d-server/src/domain/serverEmission';
 import * as GameState from '../../mmo2d-server/src/domain/gameState';
 import { World, reduce, runPhysicalSimulationStep } from '../../mmo2d-server/src/domain/world';
 import { Player } from '../../mmo2d-server/src/domain/player';
+import * as Vector3 from '../../mmo2d-server/src/domain/vector3';
 
 import { connect, emit } from './socketService';
 import { UserCommand } from '../../mmo2d-server/src';
@@ -17,6 +18,7 @@ let renderer: THREE.Renderer;
 let userCommandQueue: UserCommand[] = [];
 let serverEmissions: (ServerEmission & {playerId: string})[] = [];
 let ID = '';
+let TICK = 0;
 
 let normalizedServerGameState: GameState.GameState | undefined = undefined;
 
@@ -26,6 +28,8 @@ const clientGameStates: GameState.GameState[] = [];
 const clientMeshes: {[playerId: string]: THREE.Mesh} = {};
 const normServMeshes: {[playerId: string]: THREE.Mesh} = {};
 const servMeshes: {[playerId: string]: THREE.Mesh} = {};
+
+const LERP_MS = 100;
 
 const playerMeshes = (kind: 'client' | 'normServ' | 'serv'): {[playerId: string]: THREE.Mesh} => {
 	switch (kind) {
@@ -38,11 +42,23 @@ const playerMeshes = (kind: 'client' | 'normServ' | 'serv'): {[playerId: string]
 	}
 }
 
-const latestGameState = (gameStatesArray: GameState.GameState[]): GameState.GameState | undefined => {
+const gameStateAtTick = (tick: number | 'latest', gameStatesArray: GameState.GameState[]): GameState.GameState | undefined => {
+
 	if (gameStatesArray.length === 0) {
 		return undefined;
 	} else {
-		return gameStatesArray[gameStatesArray.length - 1];
+		const latestGameStateTick = gameStatesArray[gameStatesArray.length - 1].tick;
+		if (tick === 'latest') {
+			tick = latestGameStateTick
+		}
+		const ticksAgo = latestGameStateTick - tick;
+
+		if (latestGameStateTick >= tick && (gameStatesArray.length > ticksAgo)) {
+			return gameStatesArray[gameStatesArray.length - ticksAgo - 1];
+
+		} else {
+			return undefined;
+		}
 	}
 }
 
@@ -146,15 +162,20 @@ const init = () => {
 	});
 }
 
-const orientPlayerMesh = (playerMesh: THREE.Mesh, player: Player) => {
+const orientPlayerMesh = (playerMesh: THREE.Mesh, playerPrior: Player, playerLater: Player) => {
+	const interp = (performance.now() - lastFrameTimeMs) / GameState.TICKRATE_MS;
+	const diffPos = Vector3.subtract(playerLater.position)(playerPrior.position);
+	const interpPos = Vector3.add(playerPrior.position)(Vector3.scale(interp)(diffPos));
+	const diffRot = Vector3.subtract(playerLater.rotation)(playerPrior.rotation);
+	const interpRot = Vector3.add(playerPrior.rotation)(Vector3.scale(interp)(diffRot));
 
-	playerMesh.position.x = player.position.x;
-	playerMesh.position.y = player.position.y;
-	playerMesh.position.z = player.position.z + 1;
+	playerMesh.position.x = interpPos.x;
+	playerMesh.position.y = interpPos.y;
+	playerMesh.position.z = interpPos.z + 1;
 
-	playerMesh.rotation.x = player.rotation.x;
-	playerMesh.rotation.y = player.rotation.y;
-	playerMesh.rotation.z = player.rotation.z;
+	playerMesh.rotation.x = interpRot.x;
+	playerMesh.rotation.y = interpRot.y;
+	playerMesh.rotation.z = interpRot.z;
 
 }
 
@@ -179,9 +200,6 @@ const addPlayerMesh = (kind: GameStateKind) => (player: Player) => {
 
 	const playerMesh = new THREE.Mesh(playerGeometry, playerMaterial);
 
-	orientPlayerMesh(playerMesh, player);
-
-
 	meshes[player.id] = playerMesh;
 
 	scene.add(playerMesh);
@@ -203,6 +221,7 @@ const processServerEmissions = () => {
 				case 'fullUpdate':
 					if (ID === '') {
 						ID = emission.playerId;
+						TICK = emission.gameState.tick;
 
 						emission.gameState.world.players.forEach(p => {
 							addPlayerMesh('client')(p);
@@ -273,7 +292,7 @@ setTimeout(function tick () {
 	const start = performance.now();
 	processServerEmissions();
 
-	const staleClientGameState = latestGameState(clientGameStates);
+	const staleClientGameState = gameStateAtTick('latest', clientGameStates);
 
 	if (staleClientGameState !== undefined) {
   	let world: World = { ...staleClientGameState.world };
@@ -311,6 +330,7 @@ setTimeout(function tick () {
 			});
 
 			clientGameStates.push(nextGameState);
+			TICK++;
 			
 
 			if (clearExpiredStates) {
@@ -335,13 +355,19 @@ setTimeout(function tick () {
 }, GameState.TICKRATE_MS);
 
 const animate = () => {
-	const latestClientGameState = latestGameState(clientGameStates);
+	const priorTick = TICK - Math.floor(LERP_MS / GameState.TICKRATE_MS);
+	const priorClientGameState = gameStateAtTick(priorTick, clientGameStates);
+	const laterClientGameState = gameStateAtTick(priorTick+1, clientGameStates);
 	
-	if (latestClientGameState !== undefined) {
-		latestClientGameState.world.players.forEach(p => {
+	if (priorClientGameState !== undefined) {
+		priorClientGameState.world.players.forEach(p => {
 			const mesh = playerMeshes('client')[p.id];
 
-			orientPlayerMesh(mesh, p);
+			const p2 = (laterClientGameState as GameState.GameState).world.players.filter(p => p.id === p.id)[0];
+
+			if (p2 !== undefined) {
+				orientPlayerMesh(mesh, p, p2);
+			}
 		});
 
 		const playerMesh = playerMeshes('client')[ID];
@@ -350,7 +376,7 @@ const animate = () => {
 			positionCamera(playerMesh);
 		}
 	}
-
+/*
 	if (normalizedServerGameState !== undefined) {
 		normalizedServerGameState.world.players.forEach(p => {
 			const mesh = playerMeshes('normServ')[p.id];
@@ -358,14 +384,20 @@ const animate = () => {
 			orientPlayerMesh(mesh, p);
 		});
 	}
+*/
 
-	const latestServerGameState = latestGameState(serverGameStates);
+	const priorServerGameState = gameStateAtTick(priorTick, serverGameStates);
+	const laterServerGameState = gameStateAtTick(priorTick+1, serverGameStates);
 	
-	if (latestServerGameState !== undefined) {
-		latestServerGameState.world.players.forEach(p => {
+	if (priorServerGameState !== undefined) {
+		priorServerGameState.world.players.forEach(p => {
 			const mesh = playerMeshes('serv')[p.id];
 
-			orientPlayerMesh(mesh, p);
+			const p2 = (laterServerGameState as GameState.GameState).world.players.filter(p => p.id === p.id)[0];
+
+			if (p2 !== undefined) {
+				orientPlayerMesh(mesh, p, p2);
+			}
 		});
 	}
 
