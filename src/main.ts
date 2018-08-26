@@ -109,6 +109,10 @@ const init = () => {
 	renderer.setSize( window.innerWidth, window.innerHeight );
 	document.body.appendChild( renderer.domElement );
 
+	window.addEventListener('blur', (_event: FocusEvent) => {
+		pushUserCommand({kind: 'dropFocus'});
+	});
+
 	document.addEventListener('keydown', (event: KeyboardEvent) => {
 		if (event.repeat) {
 			return;
