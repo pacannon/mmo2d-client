@@ -1,18 +1,19 @@
 import io from 'socket.io-client';
-import { ServerEmission } from '../../mmo2d-server/src/domain/serverEmission';
-import { ControllerAction } from '../../mmo2d-server/src/domain/controller';
-import { UserCommand } from '../../mmo2d-server/src';
 
-const SERVER_URL = 'http://localhost:4000';
+import * as ServerEmission from '../../mmo2d-server/src/domain/serverEmission';
+import * as GameState from '../../mmo2d-server/src/domain/gameState';
+import * as Config from '../../mmo2d-server/src/config';
+
+const SERVER_URL = `http://localhost:${Config.PORT}`;
 
 const socket = io(SERVER_URL);
 
-export const connect = (serverEmissions: (ServerEmission & {playerId: string})[]) => {
+export const connect = (serverEmissions: (ServerEmission.ServerEmission & {playerId: string})[]) => {
   socket.on('connect', function() {
     console.log('connect');
   });
   
-  socket.on('serverEmission', function(data: ServerEmission) {
+  socket.on('serverEmission', function(data: ServerEmission.ServerEmission) {
     serverEmissions.push({...data, playerId: socket.id});
   });
 
@@ -24,6 +25,16 @@ export const connect = (serverEmissions: (ServerEmission & {playerId: string})[]
   });
 }
 
-export const emit = (action: UserCommand): void => {
-  socket.emit('clientEmission', action);
+export const emit = (action: GameState.UserCommand): void => {
+  const emitNow = () => {
+    socket.emit('clientEmission', action);
+  };
+
+  if (Config.SIMULATE_LAG_MS === undefined) {
+    emitNow();
+  } else {
+    setTimeout(() => {
+      emitNow();
+    }, Config.SIMULATE_LAG_MS / 2);
+  }
 }

@@ -1,24 +1,24 @@
 import * as THREE from 'three';
 
-import * as Controller from '../../mmo2d-server/src/domain/controller';
-import * as ServerEmission from '../../mmo2d-server/src/domain/serverEmission';
+import { ControllerAction } from '../../mmo2d-server/src/domain/controller';
+import { ServerEmission } from '../../mmo2d-server/src/domain/serverEmission';
 import * as GameState from '../../mmo2d-server/src/domain/gameState';
-import * as World from '../../mmo2d-server/src/domain/world';
+import { World, reduce, runPhysicalSimulationStep } from '../../mmo2d-server/src/domain/world';
 import * as Player from '../../mmo2d-server/src/domain/player';
 import * as Vector3 from '../../mmo2d-server/src/domain/vector3';
 import * as Config from '../../mmo2d-server/src/config';
 
-import * as SocketService from './socketService';
-
-const LERP_MS = 100;
+import { connect, emit } from './socketService';
 
 let camera: THREE.Camera;
 let scene: THREE.Scene;
 let renderer: THREE.Renderer;
 
-let serverEmissions: (ServerEmission.ServerEmission & {playerId: string})[] = [];
+
+let gameStateDeltaQueue: GameState.GameStateDelta[] = [];
+let serverEmissions: (ServerEmission & {playerId: string})[] = [];
 let ID = '';
-let TICK = -1;
+let TICK = 0;
 
 let normalizedServerGameState: GameState.GameState | undefined = undefined;
 
@@ -28,6 +28,8 @@ const clientGameStates: GameState.GameState[] = [];
 const clientMeshes: {[playerId: string]: THREE.Mesh} = {};
 const normServMeshes: {[playerId: string]: THREE.Mesh} = {};
 const servMeshes: {[playerId: string]: THREE.Mesh} = {};
+
+const LERP_MS = 100;
 
 const playerMeshes = (kind: 'client' | 'normServ' | 'serv'): {[playerId: string]: THREE.Mesh} => {
 	switch (kind) {
@@ -41,6 +43,7 @@ const playerMeshes = (kind: 'client' | 'normServ' | 'serv'): {[playerId: string]
 }
 
 const gameStateAtTick = (tick: number | 'latest', gameStatesArray: GameState.GameState[]): GameState.GameState | undefined => {
+
 	if (gameStatesArray.length === 0) {
 		return undefined;
 	} else {
@@ -59,48 +62,44 @@ const gameStateAtTick = (tick: number | 'latest', gameStatesArray: GameState.Gam
 	}
 }
 
-const pushUserCommand = (action: Controller.ControllerAction) => {
+const Objects = (): THREE.Mesh[] => {
+
+	const geometry = new THREE.SphereGeometry( 0.3 );
+  const material = new THREE.MeshNormalMaterial();
+  const mesh = new THREE.Mesh( geometry, material );
+
+  mesh.position.x = 2;
+  mesh.position.y = 3;
+  mesh.position.z = 2;
+	
+  return [mesh];
+};
+
+const Ground = (): THREE.Mesh => {
+
+	const geometry = new THREE.PlaneGeometry( 100, 100 );
+  const material = new THREE.MeshBasicMaterial( {color: 0x222222 });
+	
+  return new THREE.Mesh( geometry, material );
+
+};
+
+const pushUserCommand = (action: ControllerAction) => {
 	const userCommand: GameState.UserCommand = {
 		kind: 'player.controllerAction',
 		playerId: ID,
 		action: action
 	};
-	// gameStateDeltaQueue.push(userCommand);
-	SocketService.emit(userCommand);
+	gameStateDeltaQueue.push(userCommand);
+	emit(userCommand);
 }
 
 const init = () => {
-	SocketService.connect(serverEmissions);
+	connect(serverEmissions);
 
 	camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.01, 130 );
 
 	scene = new THREE.Scene();
-
-
-	const Ground = (): THREE.Mesh => {
-
-		const geometry = new THREE.PlaneGeometry( 100, 100 );
-		const material = new THREE.MeshBasicMaterial( {color: 0x222222 });
-		
-		return new THREE.Mesh( geometry, material );
-	
-	};
-
-	const Objects = (): THREE.Mesh[] => {
-	
-		const geometry = new THREE.SphereGeometry( 0.3 );
-		const material = new THREE.MeshNormalMaterial();
-		const mesh = new THREE.Mesh( geometry, material );
-	
-		mesh.position.x = 2;
-		mesh.position.y = 3;
-		mesh.position.z = 2;
-
-		const axes = new THREE.AxesHelper();
-		mesh.add(axes);
-		
-		return [mesh];
-	};
 
 	scene.add( Ground () );
 	(Objects ()).map(mesh => scene.add(mesh));
@@ -198,10 +197,6 @@ const addPlayerMesh = (kind: GameStateKind) => (player: Player.Player) => {
 	if (kind === 'normServ') {
 		playerGeometry.scale(0.9, 0.9, 0.9);
 	}
-	
-	if (kind === 'client') {
-		playerGeometry.scale(0.7, 0.7, 0.7);
-	}
 
 	const playerMesh = new THREE.Mesh(playerGeometry, playerMaterial);
 
@@ -217,7 +212,6 @@ const removePlayerMesh = (kind: GameStateKind) => (playerId: string) => {
 }
 
 const processServerEmissions = () => {
-	const first = TICK === -1;
 	if (serverEmissions.length > 0) {
 		while (serverEmissions.length > 0) {
 			const emission = serverEmissions[0];
@@ -225,42 +219,96 @@ const processServerEmissions = () => {
 
 			switch (emission.kind) {
 				case 'fullUpdate':
-					if (serverGameStates.length > -1) {
-						if (ID === '') {
-							ID = emission.playerId;
+					if (ID === '') {
+						ID = emission.playerId;
+						TICK = emission.gameState.tick;
 
-							emission.gameState.world.players.forEach(p => {
-								addPlayerMesh('client')(p);
-								addPlayerMesh('normServ')(p);
-								addPlayerMesh('serv')(p);
-							});
+						emission.gameState.world.players.forEach(p => {
+							addPlayerMesh('client')(p);
+							addPlayerMesh('normServ')(p);
+							addPlayerMesh('serv')(p);
+						});
 
-							normalizedServerGameState = {...emission.gameState};
-						} else {
-							emission.gameState.deltas.forEach(d => {
-								switch (d.kind) {
-									case 'world.addPlayer':
-										addPlayerMesh('client')(d.player);
-										addPlayerMesh('normServ')(d.player);
-										addPlayerMesh('serv')(d.player);
-										break;
-									case 'world.players.filterOut':
-										removePlayerMesh('client')(d.id);
-										removePlayerMesh('normServ')(d.id);
-										removePlayerMesh('serv')(d.id);
-										break;
-								}
-								
-								(normalizedServerGameState as GameState.GameState).world = World.reduce(d, (normalizedServerGameState as GameState.GameState).world);
-							});
-						}
 						clientGameStates.push(emission.gameState);
-						serverGameStates.push(emission.gameState);
-		
-						if (first) {
-							TICK = emission.gameState.tick;
+						normalizedServerGameState = {...emission.gameState};
+					} else {
+						const normy: GameState.GameState = normalizedServerGameState as GameState.GameState;
+
+						let serverPlayerDisplacement: Player.PlayerDisplacement = {
+							kind: 'player.displacement',
+							playerId: ID,
+							dP: Vector3.ZERO,
+							dR: Vector3.ZERO,
+							dV: Vector3.ZERO,
+						};
+
+						emission.gameState.deltas.forEach(action => {
+							switch (action.kind) {
+								case 'world.addPlayer':
+									addPlayerMesh('client')(action.player);
+									addPlayerMesh('normServ')(action.player);
+									addPlayerMesh('serv')(action.player);
+									gameStateDeltaQueue.push(action);
+									break;
+								case 'world.players.filterOut':
+									removePlayerMesh('client')(action.id);
+									removePlayerMesh('normServ')(action.id);
+									removePlayerMesh('serv')(action.id);
+									gameStateDeltaQueue.push(action);
+									break;
+								case 'player.displacement':
+									if (action.playerId === ID && ID !== '') {
+										serverPlayerDisplacement = {...action};
+									} else {
+										gameStateDeltaQueue.push(action);
+									}
+									break;
+								case 'player.controllerAction':
+									break;
+								default:
+									const _exhaustiveCheck: never = action;
+									return _exhaustiveCheck;
+							}
+
+							normy.world = reduce(action, normy.world);
+
+						});
+						
+						const correspondingClientGameState = gameStateAtTick(emission.gameState.tick, clientGameStates);
+
+						if (correspondingClientGameState !== undefined) {
+							const predictedPositionDeltas = correspondingClientGameState.deltas.filter(d => d.kind === 'player.displacement' && d.playerId === ID) as Player.PlayerDisplacement[];
+
+							let predictedPositionDelta: Player.PlayerDisplacement = {
+								kind: 'player.displacement',
+								playerId: ID,
+								dP: Vector3.ZERO,
+								dR: Vector3.ZERO,
+								dV: Vector3.ZERO,
+							}
+
+							if (predictedPositionDeltas.length !== 0) {
+								if (predictedPositionDeltas.length > 1) {
+								  throw Error ('this should not happen');
+								}
+
+								predictedPositionDelta = predictedPositionDeltas[0];
+							}
+
+							const serverPositionCorrection: Player.PlayerDisplacement = {
+								kind: 'player.displacement',
+								playerId: ID,
+								dP: Vector3.subtract(serverPlayerDisplacement.dP)(predictedPositionDelta.dP),
+								dR: Vector3.subtract(serverPlayerDisplacement.dR)(predictedPositionDelta.dR),
+								dV: Vector3.ZERO,
+							}
+							
+							// if (Player.shouldEmit(serverPositionCorrection)) {
+								gameStateDeltaQueue.push(serverPositionCorrection);
+							// }
 						}
 					}
+					serverGameStates.push(emission.gameState);
 				break;
 			}
 		}
@@ -286,26 +334,65 @@ const positionCamera = (target: THREE.Mesh) => {
 
 let delta = 0;
 let lastFrameTimeMs = performance.now();
+let clearExpiredStates = false;
 
 setTimeout(function tick () {
 	const start = performance.now();
 	processServerEmissions();
 
-	const latestClientGameState = gameStateAtTick('latest', clientGameStates);
+	const staleClientGameState = gameStateAtTick('latest', clientGameStates);
 
-	if (latestClientGameState !== undefined) {
-  	let world: World.World = { ...latestClientGameState.world };
+	if (staleClientGameState !== undefined) {
+  	let world: World = { ...staleClientGameState.world };
+/*
+		const playerControls: GameState.GameStateDelta[] = [];
 
-		const playerControls: GameState.UserCommand[] = [];
+		while (gameStateDeltaQueue.length > 0) {
+			playerControls.push(gameStateDeltaQueue[0]);
+			gameStateDeltaQueue.shift();
+		}
 		
 		const userCommandDeltas = GameState.processUserCommands(playerControls);
 		userCommandDeltas.forEach(d => {
-			world = World.reduce(d, world);
-		});
+			world = reduce(d, world);
+		});*/
 		
 		delta += start - lastFrameTimeMs;
+		
+		let nextGameState: GameState.GameState = {
+			tick: staleClientGameState.tick + 1,
+			world: world,
+			deltas: [/*...userCommandDeltas*/],
+		}
+
+		let count = 0;
 		while (delta >= Config.TICKRATE_MS) {
+			if (count++ > 1) {
+				console.log(count);
+			}
+			const gameStateDeltas = runPhysicalSimulationStep(nextGameState.world, Config.TICKRATE_MS / 1000);
+		
+			gameStateDeltas.forEach(d => {
+				nextGameState.world = reduce(d, nextGameState.world);
+				nextGameState.deltas.push(d);
+			});
+
+			clientGameStates.push(nextGameState);
 			TICK++;
+			
+
+			if (clearExpiredStates) {
+				clientGameStates.shift()
+			} else if ((clientGameStates.length-1) * Config.TICKRATE_MS > Config.EXPIRE_AFTER_MS) {
+				clearExpiredStates = true;
+			}
+
+			nextGameState = {
+				tick: nextGameState.tick + 1,
+				world: nextGameState.world,
+				deltas: [],
+			};
+
 			delta -= Config.TICKRATE_MS;
 		}
 	}
@@ -315,104 +402,18 @@ setTimeout(function tick () {
 	setTimeout(tick, Config.TICKRATE_MS - (performance.now() - start));
 }, Config.TICKRATE_MS);
 
-const interpolateWorlds = (priorWorld: World.World, laterWorld: World.World, percentLater: number): World.World => {
-	const playerIdsInLater = laterWorld.players.map(p => p.id);
-	const priorPlayersInBoth = priorWorld.players.filter(p => playerIdsInLater.indexOf(p.id) !== -1);
-	const playerTuples = priorPlayersInBoth.map(pp => {
-		const laterPlayer = laterWorld.players.filter(p => p.id === pp.id)[0];
-
-		return [pp, laterPlayer];
-	});
-	const interpolatePlayer = (priorPlayer: Player.Player, laterPlayer: Player.Player, percent: number): Player.Player => {
-		const dR = Vector3.subtract(laterPlayer.rotation)(priorPlayer.rotation);
-
-		if (Math.abs(dR.z) > Math.PI) {
-			const newVal = (2*Math.PI + (dR.z * (dR.z < 0 ? 1: -1))) * (dR.z < 0 ? 1: -1);
-			 
-			(dR.z as number) = newVal;
-		}
-
-		return {
-			...laterPlayer,
-			position: {
-				...Vector3.add(priorPlayer.position)(Vector3.scale(percent)(Vector3.subtract(laterPlayer.position)(priorPlayer.position)))
-			},
-			rotation: {
-				...Vector3.add(priorPlayer.rotation)(Vector3.scale(percent)(dR))
-			},
-			velocity: {
-				...Vector3.add(priorPlayer.velocity)(Vector3.scale(percent)(Vector3.subtract(laterPlayer.velocity)(priorPlayer.velocity)))
-			}
-		}
-	};
-
-	return {
-		players: playerTuples.map(tuple => {
-			return interpolatePlayer(tuple[0], tuple[1], percentLater);
-		}),
-	}
-};
-const extrapolateWorld = (world: World.World, deltaT: number): World.World => {
-	const deltas = World.runPhysicalSimulationStep(world, (deltaT * Config.TICKRATE_MS) / 1000);
-	while (deltas.length > 0) {
-		const action = deltas[0];
-		deltas.shift();
-		world = World.reduce(action, world);
-	}
-	console.log('extrapolating:', deltaT);
-
-	return world;
-};
-
-const worldAt = (gameStates: GameState.GameState[], tick: number, deltaT: number): World.World | undefined => {
-	if (gameStates.length === 0) {
-		return undefined;
-	}
-
-	const latestPreceedingTick = tick + Math.floor(deltaT);
-	const earliestFollowingTick = tick + Math.ceil(deltaT);
-
-	// is Tick +MS earlier? then calc new delta from earliest and return
-	if (latestPreceedingTick < gameStates[0].tick) {
-		const extrapolateFrom = gameStates[0];
-		const newDelta = tick - extrapolateFrom.tick + deltaT;
-
-		return extrapolateWorld(extrapolateFrom.world, newDelta);
-	}
-
-	// is tick +sm later? then calc new dela from altest and return
-	if (earliestFollowingTick > gameStates[gameStates.length - 1].tick) {
-		const extrapolateFrom = gameStates[gameStates.length - 1];
-		const newDelta = tick - extrapolateFrom.tick + deltaT;
-
-		return extrapolateWorld(extrapolateFrom.world, newDelta);
-	}
-	// is tick +ms a tick I have? return that world
-	if (latestPreceedingTick === earliestFollowingTick) {
-		const extrapolateFrom = gameStateAtTick(earliestFollowingTick, gameStates) as GameState.GameState;
-		const newDelta = ((tick - extrapolateFrom.tick) * Config.TICKRATE_MS + deltaT) / 1000;
-
-		return extrapolateWorld(extrapolateFrom.world, newDelta);
-	}
-	// is ticl +ms in between? return interp.
-	const correspondingGameStates = gameStates.filter(s => (s.tick === latestPreceedingTick) || (s.tick === earliestFollowingTick));
-	return interpolateWorlds(correspondingGameStates[0].world, correspondingGameStates[1].world, -(Math.floor(deltaT) - deltaT));
-}
-
 const animate = () => {
-	camera.position.x = 0;
-	camera.position.y = 0;
-	camera.position.z = 0;
-
-	const world = worldAt(serverGameStates, TICK, ((performance.now() - lastFrameTimeMs + delta) - LERP_MS) / Config.TICKRATE_MS);
+	const priorClientGameState = gameStateAtTick(TICK-1, clientGameStates);
+	const laterClientGameState = gameStateAtTick(TICK, clientGameStates);
 	
-	if (world !== undefined) {
-		world.players.forEach(priorPlayer => {
+	if (priorClientGameState !== undefined) {
+		priorClientGameState.world.players.forEach(priorPlayer => {
 			const mesh = playerMeshes('client')[priorPlayer.id];
 
+			const laterPlayer = (laterClientGameState as GameState.GameState).world.players.filter(p => p.id === priorPlayer.id)[0];
 
-			if (mesh !== undefined) {
-				orientPlayerMesh(mesh, priorPlayer, priorPlayer);
+			if (mesh !== undefined && laterPlayer !== undefined) {
+				orientPlayerMesh(mesh, priorPlayer, laterPlayer);
 			}
 		});
 
@@ -423,8 +424,6 @@ const animate = () => {
 		}
 	}
 
-	
-
 	if (normalizedServerGameState !== undefined) {
 		normalizedServerGameState.world.players.forEach(p => {
 			const mesh = playerMeshes('normServ')[p.id];
@@ -433,6 +432,21 @@ const animate = () => {
 		});
 	}
 
+	const priorTick = TICK - Math.floor(LERP_MS / Config.TICKRATE_MS);
+	const priorServerGameState = gameStateAtTick(priorTick, serverGameStates);
+	const laterServerGameState = gameStateAtTick(priorTick+1, serverGameStates);
+	
+	if (priorServerGameState !== undefined) {
+		priorServerGameState.world.players.forEach(priorPlayer => {
+			const mesh = playerMeshes('serv')[priorPlayer.id];
+
+			const laterPlayer = (laterServerGameState as GameState.GameState).world.players.filter(p => p.id === priorPlayer.id)[0];
+
+			if (mesh !== undefined && laterPlayer !== undefined) {
+				orientPlayerMesh(mesh, priorPlayer, laterPlayer);
+			}
+		});
+	}
 
 	requestAnimationFrame( animate );
 
