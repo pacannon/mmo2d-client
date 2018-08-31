@@ -4,7 +4,7 @@ import * as ServerEmission from '../../mmo2d-server/src/domain/serverEmission';
 import * as GameState from '../../mmo2d-server/src/domain/gameState';
 import * as Config from '../../mmo2d-server/src/config';
 
-const SERVER_URL = `http://localhost:${Config.PORT}`;
+const SERVER_URL = `http://192.168.0.12:${Config.PORT}`;
 
 const socket = io(SERVER_URL);
 

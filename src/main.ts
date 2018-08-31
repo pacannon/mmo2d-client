@@ -15,6 +15,12 @@ const LERP_MS = 100;
 let camera: THREE.Camera;
 let scene: THREE.Scene;
 let renderer: THREE.Renderer;
+let raycaster: THREE.Raycaster;
+let mouse: THREE.Vector2;
+
+const groundGeometry = new THREE.PlaneGeometry( 100, 100 );
+const groundMaterial = new THREE.MeshBasicMaterial( {color: 0x222222 });
+const GROUND = new THREE.Mesh( groundGeometry, groundMaterial );
 
 let serverEmissions: (ServerEmission.ServerEmission & {playerId: string})[] = [];
 let ID = '';
@@ -70,22 +76,25 @@ const pushUserCommand = (action: Controller.ControllerAction) => {
 	SocketService.emit(userCommand);
 }
 
+const initCamera = () => {
+	
+	const CAMERA_SCALE = 6;
+	const aspect = window.innerWidth / window.innerHeight;
+	const norm = (Math.pow(Math.max(window.innerWidth, window.innerHeight),2));
+	const mag = ((window.innerWidth * window.innerWidth)/norm) + ((window.innerHeight * window.innerHeight)/norm);
+	camera = new THREE.OrthographicCamera( - CAMERA_SCALE * aspect * mag, CAMERA_SCALE * aspect * mag, CAMERA_SCALE * mag, - CAMERA_SCALE * mag, 1, 1000 );
+
+};
+
 const init = () => {
 	SocketService.connect(serverEmissions);
 
-	camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.01, 130 );
+	// camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.01, 130 );
+	initCamera();
+	raycaster = new THREE.Raycaster();
+	mouse = new THREE.Vector2();
 
 	scene = new THREE.Scene();
-
-
-	const Ground = (): THREE.Mesh => {
-
-		const geometry = new THREE.PlaneGeometry( 100, 100 );
-		const material = new THREE.MeshBasicMaterial( {color: 0x222222 });
-		
-		return new THREE.Mesh( geometry, material );
-	
-	};
 
 	const Objects = (): THREE.Mesh[] => {
 	
@@ -103,7 +112,7 @@ const init = () => {
 		return [mesh];
 	};
 
-	scene.add( Ground () );
+	scene.add(GROUND );
 	(Objects ()).map(mesh => scene.add(mesh));
 
 	renderer = new THREE.WebGLRenderer( { antialias: true } );
@@ -161,9 +170,84 @@ const init = () => {
 			pushUserCommand({kind: 'yawRight', mapTo: mapTo});
 		}
 	});
+
+	document.addEventListener('touchstart', (event: TouchEvent) => {
+		mouse.x = ( event.touches[0].clientX / renderer.domElement.clientWidth ) * 2 - 1;
+		mouse.y = - ( event.touches[0].clientY / renderer.domElement.clientHeight ) * 2 + 1;
+		raycaster.setFromCamera( mouse, camera );
+		// See if the ray from the camera into the world hits one of our meshes
+		var intersects = raycaster.intersectObject( GROUND );
+		// Toggle rotation bool for meshes that we clicked
+		if ( intersects.length > 0 ) {
+			/*helper.position.set( 0, 0, 0 );
+			helper.lookAt( intersects[ 0 ].face.normal );
+			helper.position.copy( intersects[ 0 ].point );*/
+
+			const latestServerGameState = gameStateAtTick('latest', serverGameStates);
+
+			if (latestServerGameState !== undefined && ID !== '') {
+				const players = latestServerGameState.world.players.filter(p => p.id === ID);
+
+				if (players.length > 0) {
+					const player = players[0];
+					const delta = new THREE.Vector2(intersects[0].point.x - player.position.x, intersects[0].point.y - player.position.y);
+					delta.setLength(1);
+					pushUserCommand({
+						kind: 'setRotation',
+						z: (Math.atan2(delta.y, delta.x) + Math.PI/2),
+					});
+					pushUserCommand({
+						kind: 'moveForward',
+						mapTo: true,
+					});
+				}
+			}
+		}
+
+	});
+
+	document.addEventListener('touchend', (event: TouchEvent) => {
+		console.log(event);
+		pushUserCommand({
+			kind: 'moveForward',
+			mapTo: false,
+		});
+
+	});
+
+	document.addEventListener('touchmove', (event: TouchEvent) => {
+		mouse.x = ( event.touches[0].clientX / renderer.domElement.clientWidth ) * 2 - 1;
+		mouse.y = - ( event.touches[0].clientY / renderer.domElement.clientHeight ) * 2 + 1;
+		raycaster.setFromCamera( mouse, camera );
+		// See if the ray from the camera into the world hits one of our meshes
+		var intersects = raycaster.intersectObject( GROUND );
+		// Toggle rotation bool for meshes that we clicked
+		if ( intersects.length > 0 ) {
+			/*helper.position.set( 0, 0, 0 );
+			helper.lookAt( intersects[ 0 ].face.normal );
+			helper.position.copy( intersects[ 0 ].point );*/
+
+			const latestServerGameState = gameStateAtTick('latest', serverGameStates);
+
+			if (latestServerGameState !== undefined && ID !== '') {
+				const players = latestServerGameState.world.players.filter(p => p.id === ID);
+
+				if (players.length > 0) {
+					const player = players[0];
+					const delta = new THREE.Vector2(intersects[0].point.x - player.position.x, intersects[0].point.y - player.position.y);
+					delta.setLength(1);
+					pushUserCommand({
+						kind: 'setRotation',
+						z: (Math.atan2(delta.y, delta.x) + Math.PI/2),
+					});
+				}
+			}
+		}
+
+	});
 	
 	window.addEventListener('resize', () => {
-		camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.01, 130 );
+		initCamera();
 		renderer.setSize( window.innerWidth, window.innerHeight );
 	});
 }
@@ -188,6 +272,10 @@ const orientPlayerMesh = (playerMesh: THREE.Mesh, playerPrior: Player.Player, pl
 type GameStateKind = 'normServ' | 'serv';
 
 const addPlayerMesh = (kind: GameStateKind) => (player: Player.Player) => {
+	if (kind === 'serv') {
+		return;
+	}
+
 	const meshes = playerMeshes(kind);
 	if (meshes[player.id] !== undefined) {
 		console.log("warning! Tried to add duplicate mesh")
@@ -207,6 +295,11 @@ const addPlayerMesh = (kind: GameStateKind) => (player: Player.Player) => {
 	const playerMesh = new THREE.Mesh(playerGeometry, playerMaterial);
 
 	meshes[player.id] = playerMesh;
+
+	
+
+	const axes = new THREE.AxesHelper(3);
+	playerMesh.add(axes);
 
 	scene.add(playerMesh);
 }
@@ -268,15 +361,15 @@ const positionCamera = (target: THREE.Mesh) => {
 	camera.rotation.y = 0;
 	camera.rotation.z = 0;
 
-	camera.position.x = target.position.x;
-	camera.position.y = target.position.y;
-	camera.position.z = target.position.z;
+	const amt = 32;
 
-	camera.rotateZ(target.rotation.z);
+	camera.position.x = target.position.x + amt;
+	camera.position.y = target.position.y + amt;
+	camera.position.z = target.position.z + amt;
+
 	camera.rotateX(Math.PI/2);
-	camera.translateZ(8);
-	camera.translateY(2);
-
+	camera.up.set(0, 0, 1);
+	camera.lookAt(target.position);
 };
 
 let delta = 0;
@@ -389,7 +482,7 @@ const animate = () => {
 	camera.position.x = 0;
 	camera.position.y = 0;
 	camera.position.z = 0;
-
+/*
 	const serverWorld = worldAt(serverGameStates, TICK, ((performance.now() - lastFrameTimeMs + delta) - LERP_MS) / Config.TICKRATE_MS);
 	
 	if (serverWorld !== undefined) {
@@ -408,7 +501,7 @@ const animate = () => {
 			positionCamera(playerMesh);
 		}
 	}
-
+*/
 	
 
 	if (normalizedServerGameState !== undefined) {
@@ -417,6 +510,11 @@ const animate = () => {
 
 			orientPlayerMesh(mesh, p, p);
 		});
+		const playerMesh = playerMeshes('normServ')[ID];
+
+		if (playerMesh !== undefined) {
+			positionCamera(playerMesh);
+		}
 	}
 
 
