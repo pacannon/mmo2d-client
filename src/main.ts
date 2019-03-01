@@ -33,6 +33,26 @@ const serverGameStates: GameState.GameState[] = [];
 const normServMeshes: {[playerId: string]: THREE.Mesh} = {};
 const servMeshes: {[playerId: string]: THREE.Mesh} = {};
 
+
+
+const blockGeomerty = new THREE.CubeGeometry(1, 1, 1);
+
+var loader = new THREE.TextureLoader();;
+loader.setPath( 'textures/blocks/' );
+loader.manager
+const blockMaterial = [
+    new THREE.MeshBasicMaterial( { map: loader.load('brick.png') } ),
+    new THREE.MeshBasicMaterial( { map: loader.load('brick.png') } ),
+    new THREE.MeshBasicMaterial( { map: loader.load('brick.png') } ),
+    new THREE.MeshBasicMaterial( { map: loader.load('brick.png') } ),
+    new THREE.MeshBasicMaterial( { map: loader.load('brick.png') } ),
+    new THREE.MeshBasicMaterial( { map: loader.load('brick.png') } ),
+];
+
+blockMaterial.forEach(m => {
+	m.map.magFilter = THREE.NearestFilter;
+});
+
 const playerMeshes = (kind: 'normServ' | 'serv'): {[playerId: string]: THREE.Mesh} => {
 	switch (kind) {
 		case 'normServ':
@@ -327,6 +347,22 @@ const processServerEmissions = () => {
 							addPlayerMesh('serv')(p);
 						});
 
+						emission.gameState.world.blocks.forEach(b => {
+
+							const BLOCK: THREE.Mesh = new THREE.Mesh(blockGeomerty, blockMaterial);
+
+							BLOCK.position.x = b.position.x;
+							BLOCK.position.y = b.position.y;
+							BLOCK.position.z = b.position.z;
+	
+							scene.add(BLOCK);
+
+						});
+
+						var light = new THREE.PointLight( 0xff0000, 1, 100 );
+						light.position.set( 0, 0, 0 );
+						scene.add( light );
+
 						normalizedServerGameState = {...emission.gameState};
 					} else {
 						emission.gameState.deltas.forEach(d => {
@@ -426,6 +462,7 @@ const interpolateWorlds = (priorWorld: World.World, laterWorld: World.World, per
 	};
 
 	return {
+		blocks: laterWorld.blocks,
 		players: playerTuples.map(tuple => {
 			return interpolatePlayer(tuple[0], tuple[1], percentLater);
 		}),

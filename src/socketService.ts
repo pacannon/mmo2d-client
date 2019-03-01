@@ -4,7 +4,7 @@ import * as ServerEmission from '../../mmo2d-server/src/domain/serverEmission';
 import * as GameState from '../../mmo2d-server/src/domain/gameState';
 import * as Config from '../../mmo2d-server/src/config';
 
-const SERVER_URL = `http://192.168.0.12:${Config.PORT}`;
+const SERVER_URL = `http://localhost:${Config.PORT}`;
 
 const socket = io(SERVER_URL);
 
@@ -14,6 +14,9 @@ export const connect = (serverEmissions: (ServerEmission.ServerEmission & {playe
   });
   
   socket.on('serverEmission', function(data: ServerEmission.ServerEmission) {
+    if (data.kind === 'fullUpdate') {
+      console.log(data.gameState);
+    }
     serverEmissions.push({...data, playerId: socket.id});
   });
 

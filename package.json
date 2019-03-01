@@ -8,6 +8,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "natives": "1.1.6",
     "socket.io-client": "^2.1.1",
     "three": "^0.95.0"
   },
@@ -15,7 +16,7 @@
     "@types/node": "^10.7.1",
     "@types/socket.io-client": "^1.4.32",
     "@types/three": "^0.92.17",
-    "browserify": "^16.2.2",
+    "browserify": "16.2.3",
     "gulp": "^3.9.1",
     "gulp-typescript": "^5.0.0-alpha.3",
     "gulp-util": "^3.0.8",
