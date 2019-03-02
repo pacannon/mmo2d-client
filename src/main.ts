@@ -21,6 +21,7 @@ let mouse: THREE.Vector2;
 const groundGeometry = new THREE.PlaneGeometry( 100, 100 );
 const groundMaterial = new THREE.MeshBasicMaterial( {color: 0x222222 });
 const GROUND = new THREE.Mesh( groundGeometry, groundMaterial );
+GROUND.rotateOnAxis(new THREE.Vector3(1, 0, 0), -Math.PI/2);
 
 let serverEmissions: (ServerEmission.ServerEmission & {playerId: string})[] = [];
 let ID = '';
@@ -37,7 +38,7 @@ const servMeshes: {[playerId: string]: THREE.Mesh} = {};
 
 const blockGeomerty = new THREE.CubeGeometry(1, 1, 1);
 
-var loader = new THREE.TextureLoader();;
+var loader = new THREE.TextureLoader();
 loader.setPath( 'textures/blocks/' );
 loader.manager
 const blockMaterial = [
@@ -102,14 +103,14 @@ const initCamera = () => {
 	const aspect = window.innerWidth / window.innerHeight;
 	const norm = (Math.pow(Math.max(window.innerWidth, window.innerHeight),2));
 	const mag = ((window.innerWidth * window.innerWidth)/norm) + ((window.innerHeight * window.innerHeight)/norm);
-	camera = new THREE.OrthographicCamera( - CAMERA_SCALE * aspect * mag, CAMERA_SCALE * aspect * mag, CAMERA_SCALE * mag, - CAMERA_SCALE * mag, 1, 1000 );
+	// camera = new THREE.OrthographicCamera( - CAMERA_SCALE * aspect * mag, CAMERA_SCALE * aspect * mag, CAMERA_SCALE * mag, - CAMERA_SCALE * mag, 1, 1000 );
 
+	camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.01, 130 );
 };
 
 const init = () => {
 	SocketService.connect(serverEmissions);
 
-	// camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.01, 130 );
 	initCamera();
 	raycaster = new THREE.Raycaster();
 	mouse = new THREE.Vector2();
@@ -214,7 +215,7 @@ const init = () => {
 					delta.setLength(1);
 					pushUserCommand({
 						kind: 'setRotation',
-						z: (Math.atan2(delta.y, delta.x) + Math.PI/2),
+						y: (Math.atan2(delta.y, delta.x) + Math.PI/2),
 					});
 					pushUserCommand({
 						kind: 'moveForward',
@@ -258,7 +259,7 @@ const init = () => {
 					delta.setLength(1);
 					pushUserCommand({
 						kind: 'setRotation',
-						z: (Math.atan2(delta.y, delta.x) + Math.PI/2),
+						y: (Math.atan2(delta.y, delta.x) + Math.PI/2),
 					});
 				}
 			}
@@ -280,8 +281,8 @@ const orientPlayerMesh = (playerMesh: THREE.Mesh, playerPrior: Player.Player, pl
 	const interpRot = Vector3.add(playerPrior.rotation)(Vector3.scale(interp)(diffRot));
 
 	playerMesh.position.x = interpPos.x;
-	playerMesh.position.y = interpPos.y;
-	playerMesh.position.z = interpPos.z + 1;
+	playerMesh.position.y = interpPos.y + 1;
+	playerMesh.position.z = interpPos.z;
 
 	playerMesh.rotation.x = interpRot.x;
 	playerMesh.rotation.y = interpRot.y;
@@ -393,19 +394,21 @@ const processServerEmissions = () => {
 
 const positionCamera = (target: THREE.Mesh) => {
 
-	camera.rotation.x = 0;
-	camera.rotation.y = 0;
-	camera.rotation.z = 0;
+	camera.rotation.x = target.rotation.x;
+	camera.rotation.y = target.rotation.y;
+	camera.rotation.z = target.rotation.z;
 
 	const amt = 32;
 
-	camera.position.x = target.position.x + amt;
-	camera.position.y = target.position.y + amt;
-	camera.position.z = target.position.z + amt;
+	camera.position.x = target.position.x// + amt;
+	camera.position.y = target.position.y// + amt;
+	camera.position.z = target.position.z// + amt;
 
-	camera.rotateX(Math.PI/2);
-	camera.up.set(0, 0, 1);
-	camera.lookAt(target.position);
+	//camera.rotateX(Math.PI/2);
+	//camera.up.set(0, 1, 0);
+	//camera.setRotationFromQuaternion(target.quaternion);
+	// camera.lookAt(target.);
+	//camera.lookAt(target.position);
 };
 
 let delta = 0;
@@ -441,10 +444,10 @@ const interpolateWorlds = (priorWorld: World.World, laterWorld: World.World, per
 	const interpolatePlayer = (priorPlayer: Player.Player, laterPlayer: Player.Player, percent: number): Player.Player => {
 		const dR = Vector3.subtract(laterPlayer.rotation)(priorPlayer.rotation);
 
-		if (Math.abs(dR.z) > Math.PI) {
-			const newVal = (2*Math.PI + (dR.z * (dR.z < 0 ? 1: -1))) * (dR.z < 0 ? 1: -1);
+		if (Math.abs(dR.y) > Math.PI) {
+			const newVal = (2*Math.PI + (dR.y * (dR.y < 0 ? 1: -1))) * (dR.y < 0 ? 1: -1);
 			 
-			(dR.z as number) = newVal;
+			(dR.y as number) = newVal;
 		}
 
 		return {
