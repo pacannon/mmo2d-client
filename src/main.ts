@@ -303,7 +303,7 @@ const addPlayerMesh = (kind: GameStateKind) => (player: Player.Player) => {
 		return;
 	}
 
-	const playerGeometry = new THREE.BoxGeometry(1, 1, 2);
+	const playerGeometry = new THREE.BoxGeometry(1, 2, 1);
 	const playerMaterial = new THREE.MeshNormalMaterial( {
 		wireframe: true,
 		flatShading: kind === 'normServ'

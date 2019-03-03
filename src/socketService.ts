@@ -14,9 +14,6 @@ export const connect = (serverEmissions: (ServerEmission.ServerEmission & {playe
   });
   
   socket.on('serverEmission', function(data: ServerEmission.ServerEmission) {
-    if (data.kind === 'fullUpdate') {
-      console.log(data.gameState);
-    }
     serverEmissions.push({...data, playerId: socket.id});
   });
 
